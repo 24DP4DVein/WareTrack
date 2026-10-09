@@ -1,4 +1,4 @@
-import os
+﻿import os
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -10,7 +10,7 @@ from app.routers import auth, dashboard, items, master_data, transfers, users
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="WareTrack API", version="1.0.0", description="WareTrack noliktavas vadības REST API")
+app = FastAPI(title="WareTrack API", version="1.0.0", description="WareTrack noliktavas vadÄ«bas REST API")
 origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True,
                    allow_methods=["*"], allow_headers=["*"])
@@ -28,9 +28,10 @@ app.include_router(users.router, prefix="/api")
 @app.exception_handler(RequestValidationError)
 async def validation_error(_: Request, exc: RequestValidationError):
     errors = [{"field": ".".join(str(p) for p in e["loc"][1:]), "message": e["msg"]} for e in exc.errors()]
-    return JSONResponse(status_code=422, content={"detail": "Ievadītie dati nav derīgi", "errors": errors})
+    return JSONResponse(status_code=422, content={"detail": "IevadÄ«tie dati nav derÄ«gi", "errors": errors})
 
 
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
