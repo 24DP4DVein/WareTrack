@@ -1,4 +1,4 @@
-import os
+﻿import os
 from pathlib import Path
 
 from sqlalchemy import create_engine, event
@@ -30,3 +30,4 @@ def get_db():
         yield db
     finally:
         db.close()
+
