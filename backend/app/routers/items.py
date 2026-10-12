@@ -25,11 +25,11 @@ def item_out(item: Item) -> ItemOut:
 
 def validate_relations(db: Session, data: ItemIn):
     if not db.get(Category, data.category_id):
-        raise HTTPException(422, "Nor?üd?½t?ü kategorija neeksist?ō")
+        raise HTTPException(422, "Norādītā kategorija neeksistē")
     if not db.get(Location, data.location_id):
-        raise HTTPException(422, "Nor?üd?½t?ü noliktavas vieta neeksist?ō")
+        raise HTTPException(422, "Norādītā noliktavas vieta neeksistē")
     if data.supplier_id and not db.get(Supplier, data.supplier_id):
-        raise HTTPException(422, "Nor?üd?½tais pieg?üd?üt?üjs neeksist?ō")
+        raise HTTPException(422, "Norādītais piegādātājs neeksistē")
 
 
 @router.get("", response_model=ItemList)
@@ -67,7 +67,7 @@ def create_item(data: ItemIn, db: Session = Depends(get_db), user: User = Depend
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "SKU jau tiek izmantots")
-    log_activity(db, user, "create", "item", item.id, f"Izveidota prece ŌĆ£{item.name}ŌĆØ")
+    log_activity(db, user, "create", "item", item.id, f"Izveidota prece: {item.name}")
     db.commit()
     return get_item(item.id, db)
 
@@ -85,7 +85,7 @@ def update_item(item_id: int, data: ItemUpdate, db: Session = Depends(get_db), u
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "SKU jau tiek izmantots")
-    log_activity(db, user, "update", "item", item.id, f"Atjaunin?üta prece ŌĆ£{item.name}ŌĆØ")
+    log_activity(db, user, "update", "item", item.id, f"Atjaunināta prece: {item.name}")
     db.commit()
     return get_item(item.id, db)
 
@@ -97,8 +97,8 @@ def delete_item(item_id: int, db: Session = Depends(get_db), user: User = Depend
         raise HTTPException(404, "Prece nav atrasta")
     name = item.name
     if item.transfers:
-        raise HTTPException(409, "Preci ar p?ürvieto?Īanas v?ōsturi nevar dz?ōst")
+        raise HTTPException(409, "Preci ar pārvietošanas vēsturi nevar dzēst")
     db.delete(item)
-    log_activity(db, user, "delete", "item", item_id, f"Dz?ōsta prece ŌĆ£{name}ŌĆØ")
+    log_activity(db, user, "delete", "item", item_id, f"Dzēsta prece: {name}")
     db.commit()
 
