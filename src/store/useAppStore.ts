@@ -1,0 +1,6 @@
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import type { User } from "@/types";
+interface Toast { id:string; message:string; type:"success"|"error"|"warning"|"info" }
+interface AppState { token:string|null; user:User|null; hydrated:boolean; sidebarOpen:boolean; toasts:Toast[]; setAuth:(token:string,user:User)=>void; logout:()=>void; setHydrated:(v:boolean)=>void; toggleSidebar:()=>void; closeSidebar:()=>void; showToast:(m:string,t?:Toast["type"])=>void; removeToast:(id:string)=>void }
+export const useAppStore=create<AppState>()(persist((set,get)=>({token:null,user:null,hydrated:false,sidebarOpen:false,toasts:[],setAuth:(token,user)=>set({token,user}),logout:()=>set({token:null,user:null}),setHydrated:(hydrated)=>set({hydrated}),toggleSidebar:()=>set(s=>({sidebarOpen:!s.sidebarOpen})),closeSidebar:()=>set({sidebarOpen:false}),showToast:(message,type="success")=>{const id=crypto.randomUUID();set(s=>({toasts:[...s.toasts,{id,message,type}]}));setTimeout(()=>get().removeToast(id),4000)},removeToast:id=>set(s=>({toasts:s.toasts.filter(t=>t.id!==id)}))}),{name:"waretrack-auth",partialize:s=>({token:s.token,user:s.user}),onRehydrateStorage:()=>s=>s?.setHydrated(true)}));
