@@ -1,6 +1,6 @@
 ﻿from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth.dependencies import get_current_user
@@ -13,13 +13,30 @@ router = APIRouter(prefix="/items", tags=["Preces"])
 
 
 def item_out(item: Item) -> ItemOut:
-    status = "critical" if item.stock <= item.min_stock * .3 else "low" if item.stock < item.min_stock else "ok"
+    status = (
+        "critical"
+        if item.stock <= item.min_stock * 0.3
+        else "low"
+        if item.stock < item.min_stock
+        else "ok"
+    )
     return ItemOut.model_validate({
-        "id": item.id, "name": item.name, "sku": item.sku, "category_id": item.category_id,
-        "supplier_id": item.supplier_id, "location_id": item.location_id, "stock": item.stock,
-        "min_stock": item.min_stock, "price": item.price, "description": item.description,
-        "category_name": item.category.name, "supplier_name": item.supplier.name if item.supplier else None,
-        "location_name": item.location.name, "status": status, "created_at": item.created_at, "updated_at": item.updated_at,
+        "id": item.id,
+        "name": item.name,
+        "sku": item.sku,
+        "category_id": item.category_id,
+        "supplier_id": item.supplier_id,
+        "location_id": item.location_id,
+        "stock": item.stock,
+        "min_stock": item.min_stock,
+        "price": item.price,
+        "description": item.description,
+        "category_name": item.category.name,
+        "supplier_name": item.supplier.name if item.supplier else None,
+        "location_name": item.location.name,
+        "status": status,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
     })
 
 
@@ -90,54 +107,115 @@ def list_items(
 
 @router.get("/{item_id}", response_model=ItemOut)
 def get_item(item_id: int, db: Session = Depends(get_db)):
-    item = db.scalar(select(Item).where(Item.id == item_id).options(joinedload(Item.category), joinedload(Item.supplier), joinedload(Item.location)))
+    item = db.scalar(
+        select(Item)
+        .where(Item.id == item_id)
+        .options(
+            joinedload(Item.category),
+            joinedload(Item.supplier),
+            joinedload(Item.location),
+        )
+    )
     if not item:
         raise HTTPException(404, "Prece nav atrasta")
     return item_out(item)
 
 
 @router.post("", response_model=ItemOut, status_code=201)
-def create_item(data: ItemIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def create_item(
+    data: ItemIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     validate_relations(db, data)
     item = Item(**data.model_dump())
     db.add(item)
+
     try:
         db.flush()
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "SKU jau tiek izmantots")
-    log_activity(db, user, "create", "item", item.id, f"Izveidota prece: {item.name}")
-    db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(500, "Neizdevās saglabāt preci")
+
+    try:
+        log_activity(
+            db, user, "create", "item", item.id,
+            f"Izveidota prece: {item.name}",
+        )
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(500, "Neizdevās saglabāt preci")
+
     return get_item(item.id, db)
 
 
 @router.put("/{item_id}", response_model=ItemOut)
-def update_item(item_id: int, data: ItemUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def update_item(
+    item_id: int,
+    data: ItemUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     item = db.get(Item, item_id)
     if not item:
         raise HTTPException(404, "Prece nav atrasta")
+
     validate_relations(db, data)
+
     for key, value in data.model_dump().items():
         setattr(item, key, value)
+
     try:
         db.flush()
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "SKU jau tiek izmantots")
-    log_activity(db, user, "update", "item", item.id, f"Atjaunināta prece: {item.name}")
-    db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(500, "Neizdevās atjaunināt preci")
+
+    try:
+        log_activity(
+            db, user, "update", "item", item.id,
+            f"Atjaunināta prece: {item.name}",
+        )
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(500, "Neizdevās atjaunināt preci")
+
     return get_item(item.id, db)
 
 
 @router.delete("/{item_id}", status_code=204)
-def delete_item(item_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def delete_item(
+    item_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     item = db.get(Item, item_id)
     if not item:
         raise HTTPException(404, "Prece nav atrasta")
-    name = item.name
-    if item.transfers:
-        raise HTTPException(409, "Preci ar pārvietošanas vēsturi nevar dzēst")
-    db.delete(item)
-    log_activity(db, user, "delete", "item", item_id, f"Dzēsta prece: {name}")
-    db.commit()
 
+    name = item.name
+
+    if item.transfers:
+        raise HTTPException(
+            409,
+            "Preci ar pārvietošanas vēsturi nevar dzēst",
+        )
+
+    try:
+        db.delete(item)
+        log_activity(
+            db, user, "delete", "item", item.id,
+            f"Dzēsta prece: {name}",
+        )
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(500, "Neizdevās dzēst preci")
