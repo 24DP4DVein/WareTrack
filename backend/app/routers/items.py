@@ -33,20 +33,59 @@ def validate_relations(db: Session, data: ItemIn):
 
 
 @router.get("", response_model=ItemList)
-def list_items(search: str = "", category: int | None = None, status: str | None = None,
-               page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=100), db: Session = Depends(get_db)):
-    query = select(Item).options(joinedload(Item.category), joinedload(Item.supplier), joinedload(Item.location))
-    if search:
+def list_items(
+    search: str = "",
+    category: int | None = None,
+    status: str | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    query = select(Item)
+
+    if search.strip():
         q = f"%{search.strip()}%"
-        query = query.where(or_(Item.name.ilike(q), Item.sku.ilike(q)))
-    if category:
+        query = query.where(
+            or_(Item.name.ilike(q), Item.sku.ilike(q))
+        )
+
+    if category is not None:
         query = query.where(Item.category_id == category)
-    all_items = list(db.scalars(query.order_by(Item.created_at.desc())).unique())
+
     if status in {"ok", "low", "critical"}:
-        all_items = [i for i in all_items if item_out(i).status == status]
-    total = len(all_items)
-    selected = all_items[(page - 1) * page_size: page * page_size]
-    return ItemList(items=[item_out(i) for i in selected], total=total, page=page, page_size=page_size)
+        if status == "critical":
+            query = query.where(Item.stock <= Item.min_stock * 0.3)
+        elif status == "low":
+            query = query.where(
+                Item.stock < Item.min_stock,
+                Item.stock > Item.min_stock * 0.3,
+            )
+        else:
+            query = query.where(Item.stock >= Item.min_stock)
+
+    total = db.scalar(
+        select(func.count()).select_from(query.subquery())
+    ) or 0
+
+    items_query = (
+        query.options(
+            joinedload(Item.category),
+            joinedload(Item.supplier),
+            joinedload(Item.location),
+        )
+        .order_by(Item.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+
+    items = db.scalars(items_query).unique().all()
+
+    return ItemList(
+        items=[item_out(item) for item in items],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.get("/{item_id}", response_model=ItemOut)
