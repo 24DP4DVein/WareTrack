@@ -18,3 +18,17 @@ def test_identical_locations(client, user_headers):
     response = client.post("/api/transfers", json=transfer_payload(destination=1), headers=user_headers)
     assert response.status_code == 422
 
+def test_transfer_validation_rejects_negative_quantity(client, user_headers):
+    response = client.post(
+        "/api/transfers",
+        json=transfer_payload(-1),
+        headers=user_headers,
+    )
+    assert response.status_code == 422
+
+
+def test_transfer_validation_rejects_invalid_priority(client, user_headers):
+    data = transfer_payload()
+    data["priority"] = "super-urgent"
+    response = client.post("/api/transfers", json=data, headers=user_headers)
+    assert response.status_code == 422

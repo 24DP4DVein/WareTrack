@@ -36,4 +36,22 @@ def test_delete_item(client, user_headers):
     created = client.post("/api/items", json=payload(), headers=user_headers).json()
     response = client.delete(f"/api/items/{created['id']}", headers=user_headers)
     assert response.status_code == 204
+def test_item_validation_rejects_invalid_sku(client, user_headers):
+    data = payload("lowercase-sku")
+    response = client.post("/api/items", json=data, headers=user_headers)
+    assert response.status_code == 422
+
+
+def test_item_validation_rejects_empty_name(client, user_headers):
+    data = payload()
+    data["name"] = ""
+    response = client.post("/api/items", json=data, headers=user_headers)
+    assert response.status_code == 422
+
+
+def test_item_validation_rejects_negative_price(client, user_headers):
+    data = payload()
+    data["price"] = -1
+    response = client.post("/api/items", json=data, headers=user_headers)
+    assert response.status_code == 422
 
