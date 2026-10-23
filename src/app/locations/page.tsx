@@ -1,2 +1,10 @@
-"use client";import { MapPin } from "lucide-react";import { useLocations } from "@/hooks/useWarehouse";import { Card,LoadingSpinner,SectionHeader } from "@/components/shared/ui";import { formatNumber } from "@/lib/utils";
-export default function Locations(){const q=useLocations();return <div><SectionHeader title="Noliktavas vietas" subtitle="Krājumu izvietojums un ietilpība"/>{q.isLoading?<LoadingSpinner/>:q.isError?<p className="text-red-700">{q.error.message}</p>:<div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">{q.data?.map(l=>{const pct=Math.min(100,Math.round(l.usedCapacity/l.capacity*100));return <Card key={l.id} className="p-5"><div className="flex items-start gap-3"><span className="bg-blue-50 text-blue-600 p-2 rounded-lg"><MapPin size={18}/></span><div className="flex-1"><p className="font-mono text-xs text-muted-foreground">{l.code}</p><h2 className="font-semibold">{l.name}</h2></div></div><div className="mt-5 flex justify-between text-xs"><span>Izmantots {formatNumber(l.usedCapacity)}</span><span>Ietilpība {formatNumber(l.capacity)}</span></div><div className="h-2 bg-secondary rounded-full mt-2"><div className="h-full bg-blue-600 rounded-full" style={{width:pct+"%"}}/></div><p className="text-right text-xs mt-1 text-muted-foreground">{pct}%</p></Card>})}</div>}</div>}
+"use client";
+import { Card, EmptyState, LoadingSpinner, SectionHeader, StockBar } from "@/components/shared/ui";
+import { useLocations } from "@/hooks/useWarehouse";
+
+export default function LocationsPage(){
+ const q=useLocations();
+ return <div><SectionHeader title="Noliktavas vietas" subtitle="Noliktavas zonu un ietilpības pārskats"/>
+  <Card>{q.isLoading?<LoadingSpinner/>:q.isError?<p className="p-6 text-red-700">Datus neizdevās ielādēt: {q.error.message}</p>:!q.data?.length?<EmptyState message="Noliktavas vietu vēl nav"/>:<table className="w-full text-sm"><thead><tr className="bg-secondary/60 text-xs text-muted-foreground"><th className="text-left p-3">Kods</th><th className="text-left p-3">Nosaukums</th><th className="text-left p-3">Aizpildījums</th><th className="text-left p-3">Ietilpība</th></tr></thead><tbody className="divide-y">{q.data.map(l=><tr key={l.id}><td className="p-3 font-mono">{l.code}</td><td className="p-3 font-medium">{l.name}</td><td className="p-3"><div className="flex items-center gap-2">{l.usedCapacity}<StockBar stock={l.usedCapacity} minStock={Math.max(1,Math.floor(l.capacity/3))}/></div></td><td className="p-3">{l.capacity}</td></tr>)}</tbody></table>}</Card>
+ </div>;
+}
