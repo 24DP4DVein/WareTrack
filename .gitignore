@@ -4,5 +4,7 @@ node_modules/
 backend/.venv/
 backend/waretrack.db
 backend/.pytest_cache/
+playwright-report/
+test-results/
 **/__pycache__/
 *.pyc

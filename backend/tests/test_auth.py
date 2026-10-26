@@ -38,6 +38,22 @@ def test_role_permissions(client, user_headers, admin_headers):
     assert client.post("/api/categories", json={**payload, "name": "Otra kategorija"}, headers=admin_headers).status_code == 201
 
 
+def test_manager_can_manage_suppliers_and_locations(client, user_headers):
+    supplier = {"name": "Jauns piegādātājs", "contactPerson": "Anna Liepa", "email": "new@supplier.lv",
+                "phone": "+371 20000001", "address": "Rīga, Latvija", "category": "Testi", "paymentTerms": "net30"}
+    location = {"code": "RIG-C01", "name": "Rīga C1", "capacity": 100}
+    created_supplier = client.post("/api/suppliers", json=supplier, headers=user_headers)
+    created_location = client.post("/api/locations", json=location, headers=user_headers)
+    assert created_supplier.status_code == 201
+    assert created_location.status_code == 201
+    supplier_id = created_supplier.json()["id"]
+    location_id = created_location.json()["id"]
+    assert client.put(f"/api/suppliers/{supplier_id}", json={**supplier, "name": "Atjaunots piegādātājs"}, headers=user_headers).status_code == 200
+    assert client.put(f"/api/locations/{location_id}", json={**location, "name": "Rīga C2"}, headers=user_headers).status_code == 200
+    assert client.delete(f"/api/suppliers/{supplier_id}", headers=user_headers).status_code == 204
+    assert client.delete(f"/api/locations/{location_id}", headers=user_headers).status_code == 204
+
+
     def test_admin_can_use_operational_endpoints(client, admin_headers):
         item = {"name": "Administratora prece", "sku": "ADM-001", "categoryId": 1, "locationId": 1,
             "stock": 1, "minStock": 0, "price": 1, "description": ""}
@@ -111,6 +127,8 @@ def test_admin_can_create_users_with_default_or_explicit_role(client, admin_head
     assert default_user.json()["role"] == "LIETOTAJS"
     assert manager.status_code == 201
     assert manager.json()["role"] == "VADITAJS"
+    activity = client.get("/api/activity", headers=admin_headers)
+    assert any("Izveidots lietotāja konts" in record["message"] for record in activity.json())
 
 
 def test_admin_cannot_demote_or_deactivate_self(client, admin_headers):

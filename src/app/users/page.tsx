@@ -13,6 +13,7 @@ export default function UsersPage() {
   const updateUser = useUpdateUser();
   const createUser = useCreateUser();
   const toast = useAppStore((state) => state.showToast);
+  const currentUser = useAppStore((state) => state.user);
   const [creating, setCreating] = useState(false);
   const [newUser, setNewUser] = useState({ name: "", email: "", password: "", role: "LIETOTAJS" as Role });
 
@@ -82,7 +83,7 @@ export default function UsersPage() {
                         <select
                           aria-label={`Mainīt ${user.name} lomu`}
                           value={user.role}
-                          disabled={updateUser.isPending}
+                          disabled={updateUser.isPending || (currentUser?.id === user.id && user.role === "ADMIN")}
                           onChange={(event) => changeRole(user.id, event.target.value as Role)}
                           className="border border-border rounded-md bg-white px-2 py-1.5 text-xs"
                         >
@@ -90,7 +91,7 @@ export default function UsersPage() {
                           <option value="VADITAJS">Vadītājs</option>
                           <option value="ADMIN">Administrators</option>
                         </select>
-                        <Button size="sm" disabled={updateUser.isPending} onClick={() => updateUser.mutate({ id: user.id, data: { isActive: !user.isActive } }, {
+                        <Button size="sm" disabled={updateUser.isPending || (currentUser?.id === user.id && user.role === "ADMIN")} onClick={() => updateUser.mutate({ id: user.id, data: { isActive: !user.isActive } }, {
                           onSuccess: () => toast(user.isActive ? "Lietotājs deaktivizēts" : "Lietotājs aktivizēts"),
                           onError: (error) => toast(error.message, "error"),
                         })}>{user.isActive ? "Deaktivizēt" : "Aktivizēt"}</Button>
