@@ -1,0 +1,2 @@
+﻿"""WareTrack FastAPI backend."""
+

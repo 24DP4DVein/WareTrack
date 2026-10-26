@@ -1,0 +1,87 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Space+Mono:wght@400;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 40 20% 96%;
+    --foreground: 40 10% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 40 10% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 40 10% 10%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 40 15% 94%;
+    --secondary-foreground: 40 10% 30%;
+    --muted: 40 15% 94%;
+    --muted-foreground: 40 8% 50%;
+    --accent: 40 15% 94%;
+    --accent-foreground: 40 10% 10%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 40 15% 88%;
+    --input: 40 15% 88%;
+    --ring: 221 83% 53%;
+    --radius: 0.5rem;
+    --sidebar-width: 220px;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .font-mono {
+    font-family: 'Space Mono', monospace;
+  }
+}
+
+@layer components {
+  /* Sidebar */
+  .sidebar {
+    @apply fixed left-0 top-0 h-screen w-[220px] bg-[#1a1916] text-white flex flex-col z-50;
+  }
+
+  /* Stock bar */
+  .stock-bar {
+    @apply w-20 h-1 bg-border rounded-full overflow-hidden;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/40;
+  }
+
+  /* Table row hover */
+  .table-row-hover:hover {
+    @apply bg-secondary/60;
+  }
+
+  /* Zone cell */
+  .zone-cell {
+    @apply rounded-md aspect-square flex flex-col items-center justify-center text-[10px] font-medium font-mono cursor-pointer transition-transform hover:scale-105 border select-none;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
