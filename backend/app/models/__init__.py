@@ -140,11 +140,17 @@ class CompanyJoinRequest(Base):
 
 class Category(Base):
     __tablename__ = "categories"
+    __table_args__ = (
+        Index(
+            "uq_categories_company_name", "company_id", "name", unique=True,
+            sqlite_where=text("company_id IS NOT NULL"),
+        ),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int | None] = mapped_column(
         ForeignKey("companies.id"), nullable=True, index=True
     )
-    name: Mapped[str] = mapped_column(String(100), unique=True)
+    name: Mapped[str] = mapped_column(String(100))
     description: Mapped[str] = mapped_column(Text, default="")
     icon: Mapped[str] = mapped_column(String(30), default="Package")
     color: Mapped[str] = mapped_column(String(20), default="blue")
@@ -155,13 +161,23 @@ class Category(Base):
 
 class Supplier(Base):
     __tablename__ = "suppliers"
+    __table_args__ = (
+        Index(
+            "uq_suppliers_company_name", "company_id", "name", unique=True,
+            sqlite_where=text("company_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_suppliers_company_email", "company_id", "email", unique=True,
+            sqlite_where=text("company_id IS NOT NULL"),
+        ),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int | None] = mapped_column(
         ForeignKey("companies.id"), nullable=True, index=True
     )
-    name: Mapped[str] = mapped_column(String(150), unique=True)
+    name: Mapped[str] = mapped_column(String(150))
     contact_person: Mapped[str] = mapped_column(String(100))
-    email: Mapped[str] = mapped_column(String(255), unique=True)
+    email: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str] = mapped_column(String(30))
     address: Mapped[str] = mapped_column(String(300))
     category: Mapped[str] = mapped_column(String(100), default="Da?Š?üdi")
@@ -174,11 +190,17 @@ class Supplier(Base):
 
 class Location(Base):
     __tablename__ = "locations"
+    __table_args__ = (
+        Index(
+            "uq_locations_company_code", "company_id", "code", unique=True,
+            sqlite_where=text("company_id IS NOT NULL"),
+        ),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int | None] = mapped_column(
         ForeignKey("companies.id"), nullable=True, index=True
     )
-    code: Mapped[str] = mapped_column(String(30), unique=True)
+    code: Mapped[str] = mapped_column(String(30))
     name: Mapped[str] = mapped_column(String(120))
     capacity: Mapped[int] = mapped_column(Integer, default=1000)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -188,12 +210,18 @@ class Location(Base):
 
 class Item(Base):
     __tablename__ = "items"
+    __table_args__ = (
+        Index(
+            "uq_items_company_sku", "company_id", "sku", unique=True,
+            sqlite_where=text("company_id IS NOT NULL"),
+        ),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int | None] = mapped_column(
         ForeignKey("companies.id"), nullable=True, index=True
     )
     name: Mapped[str] = mapped_column(String(100), index=True)
-    sku: Mapped[str] = mapped_column(String(30), unique=True, index=True)
+    sku: Mapped[str] = mapped_column(String(30), index=True)
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"))
     supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id", ondelete="SET NULL"), nullable=True)
     location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"))

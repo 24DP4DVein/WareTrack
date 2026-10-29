@@ -11,8 +11,9 @@ from alembic.script import ScriptDirectory
 BACKEND = Path(__file__).resolve().parents[1]
 BASELINE = "0001_baseline"
 COMPANY_MODELS = "0002_company_models"
-HEAD = "0003_company_ownership"
-REVISION_ORDER = (BASELINE, COMPANY_MODELS, HEAD)
+COMPANY_OWNERSHIP = "0003_company_ownership"
+HEAD = "0004_company_scoped_uniqueness"
+REVISION_ORDER = (BASELINE, COMPANY_MODELS, COMPANY_OWNERSHIP, HEAD)
 KNOWN_REVISIONS = set(REVISION_ORDER)
 
 

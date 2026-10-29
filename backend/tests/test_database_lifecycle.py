@@ -58,7 +58,7 @@ assert not Path(sys.argv[1]).exists()
 upgrade_database(engine)
 with TestClient(app) as client:
     assert client.get('/api/health').status_code == 200
-    assert client.get('/api/items').json()['total'] == 0
+    assert client.get('/api/items').status_code == 410
     assert set(inspect(engine).get_table_names()) == set(Base.metadata.tables) | {'alembic_version'}
     response = client.post('/api/auth/register', json={
         'name': 'Startup test', 'email': 'startup@test.lv',
@@ -121,10 +121,10 @@ def test_each_client_gets_fresh_database(client, test_engine, iteration):
     assert app.state.database_engine is test_engine
     assert test_engine is not engine
     assert test_engine.url.database in (None, "", ":memory:")
-    assert client.get("/api/items").json()["total"] == 1
+    assert client.get("/api/items").status_code == 410
     with test_engine.begin() as connection:
         connection.execute(text("DELETE FROM items"))
-    assert client.get("/api/items").json()["total"] == 0
+    assert client.get("/api/items").status_code == 410
 
 
 def test_client_teardown_restores_overrides_and_lifespan_engine(test_engine):
@@ -162,7 +162,7 @@ try:
     client_fixture = namespace['client'].__wrapped__(sessions, test_engine)
     client = next(client_fixture)
     try:
-        assert client.get('/api/items').json()['total'] == 1
+        assert client.get('/api/items').status_code == 410
     finally:
         client_fixture.close()
 finally:

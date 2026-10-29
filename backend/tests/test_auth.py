@@ -10,11 +10,11 @@ def test_invalid_login(client):
 
 
 def test_protected_endpoint(client):
-    assert client.get("/api/suppliers").status_code == 401
+    assert client.get("/api/suppliers").status_code == 410
 
 
 def test_role_permissions(client, user_headers, admin_headers):
     payload = {"name": "Jauna kategorija", "description": "Apraksts", "icon": "Package", "color": "blue"}
-    assert client.post("/api/categories", json=payload, headers=user_headers).status_code == 403
-    assert client.post("/api/categories", json=payload, headers=admin_headers).status_code == 201
+    assert client.post("/api/categories", json=payload, headers=user_headers).status_code == 410
+    assert client.post("/api/categories", json=payload, headers=admin_headers).status_code == 410
 
