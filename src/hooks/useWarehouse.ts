@@ -8,7 +8,7 @@ const json=(method:string,data?:unknown):RequestInit=>({method,body:data===undef
 const companyKey=(userId:number|undefined,companyId:number,resource:string,...rest:unknown[])=>[userId,companyId,resource,...rest] as const;
 function useScope(){return {companyId:useRouteCompanyId(),userId:useAppStore(s=>s.user?.id)};}
 function companyPath(companyId:number,path:string){if(!companyId)throw new Error("Nav izvēlēts uzņēmums");return `/companies/${companyId}${path}`;}
-function useInvalidate(){const qc=useQueryClient(),{userId,companyId}=useScope();return ()=>Promise.all(["items","dashboard","reports","activity","categories","locations"].map(resource=>qc.invalidateQueries({queryKey:companyKey(userId,companyId,resource)})));}
+function useInvalidate(){const qc=useQueryClient(),{userId,companyId}=useScope();return ()=>Promise.all(["items","dashboard","reports","activity","categories","locations","transfers"].map(resource=>qc.invalidateQueries({queryKey:companyKey(userId,companyId,resource)})));}
 
 export function useItems(filters:{search?:string;category?:number;status?:string;page?:number;pageSize?:number}={}){const {userId,companyId}=useScope();const p=new URLSearchParams();Object.entries(filters).forEach(([k,v])=>{if(v!==undefined&&v!=="")p.set(k==="pageSize"?"page_size":k,String(v))});return useQuery({queryKey:companyKey(userId,companyId,"items",filters),queryFn:()=>api<ItemList>(companyPath(companyId,`/items?${p}`)),enabled:!!userId&&companyId>0})}
 export function useCategories(){const {userId,companyId}=useScope();return useQuery({queryKey:companyKey(userId,companyId,"categories"),queryFn:()=>api<Category[]>(companyPath(companyId,"/categories")),enabled:!!userId&&companyId>0});}

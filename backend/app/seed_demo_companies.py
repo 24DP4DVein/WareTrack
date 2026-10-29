@@ -62,7 +62,7 @@ def _enabled(value: str | None) -> bool:
 
 def _credential_email(slug: str, role: str) -> str:
     key = f"WARETRACK_DEMO_{slug.upper()}_{role.upper()}_EMAIL"
-    default = f"{role}.{slug}@demo.invalid"
+    default = f"{role}.{slug}@demo.waretrack.lv"
     return os.environ.get(key, default).strip().lower()
 
 
@@ -121,7 +121,7 @@ def _get_or_create(session: Session, model, defaults=None, **identity):
 def _seed(session: Session, password_hash: str) -> None:
     now = datetime.now(timezone.utc)
     admin_email = os.environ.get(
-        "WARETRACK_DEMO_ADMIN_EMAIL", "admin@demo.invalid"
+        "WARETRACK_DEMO_ADMIN_EMAIL", "admin@demo.waretrack.lv"
     ).strip().lower()
     admin, created = _get_or_create(
         session, User, email=admin_email,
@@ -172,7 +172,7 @@ def _seed(session: Session, password_hash: str) -> None:
 
         supplier, _ = _get_or_create(
             session, Supplier, company_id=company.id,
-            email=f"supplier.{specification['slug']}@demo.invalid",
+            email=f"supplier.{specification['slug']}@demo.waretrack.lv",
             defaults={"name": f"{specification['name']} piegādātājs",
                       "contact_person": "Demo kontakts", "phone": "+371 20000000",
                       "address": "Rīga, Latvija", "category": "Demo",
