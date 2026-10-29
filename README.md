@@ -30,9 +30,19 @@ FastAPI, SQLAlchemy un SQLite. Datu apmaiņa notiek caur autentificētu REST API
    pip install -r requirements.txt
    ```
 
-   Nokopējiet `.env.example` vērtības savā vidē. Izstrādei noklusējuma JWT atslēga
-   darbojas, bet produkcijā `JWT_SECRET_KEY` ir obligāti jānorāda kā nejauša virkne
-   ar vismaz 32 rakstzīmēm.
+   Nokopējiet `.env.example` vērtības savā vidē. Izstrādei `JWT_SECRET_KEY` ir jānorāda
+   kā nejauša virkne ar vismaz 32 rakstzīmēm. Ja vēlaties izveidot tikai lokālai
+   izstrādei nepieciešamo administratora kontu, iestatiet:
+
+   ```powershell
+   $env:WARETRACK_BOOTSTRAP_ADMIN = "true"
+   $env:WARETRACK_ADMIN_EMAIL = "admin@waretrack.local"
+   $env:WARETRACK_ADMIN_PASSWORD = "StrongPassword123!"
+   ```
+
+   `WARETRACK_BOOTSTRAP_ADMIN` ir obligāti jāieslēdz manuāli; produkcijā vai jebkurā
+   pasteidzētā vidē šis iestatījums paliek izslēgts, lai nepieļautu automātisku
+   administratora konta izveidi.
 
    ```powershell
    python -m app.seed
