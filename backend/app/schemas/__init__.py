@@ -54,6 +54,39 @@ class UserUpdate(APIModel):
     is_active: bool | None = None
 
 
+class CompanyOut(APIModel):
+    id: int
+    name: str
+    slug: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class CompanyMembershipOut(APIModel):
+    id: int
+    company_id: int
+    user_id: int
+    role: Literal["LIETOTAJS", "VADITAJS"]
+    is_active: bool
+    approved_at: datetime | None
+    approved_by_id: int | None
+    revoked_at: datetime | None
+    revoked_by_id: int | None
+    created_at: datetime
+
+
+class CompanyJoinRequestOut(APIModel):
+    id: int
+    company_id: int
+    user_id: int
+    status: Literal["PENDING", "APPROVED", "REJECTED"]
+    requested_at: datetime
+    reviewed_at: datetime | None
+    reviewed_by_id: int | None
+    rejection_reason: str | None
+
+
 class CategoryIn(APIModel):
     name: str = Field(min_length=2, max_length=100)
     description: str = Field(default="", max_length=300)

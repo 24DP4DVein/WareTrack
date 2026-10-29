@@ -5,7 +5,7 @@ from sqlalchemy.pool import NullPool
 
 from app.database import Base, DATABASE_URL, create_database_engine
 from app import models  # Register every ORM table before target_metadata.
-from app.migration_support import current_revision, validate_baseline
+from app.migration_support import current_revision, validate_baseline, validate_revision
 
 config = context.config
 target_metadata = Base.metadata
@@ -31,7 +31,7 @@ def run(connection):
             "AND tbl_name != 'alembic_version'"
         ).all()
         if revision is not None:
-            validate_baseline(connection)
+            validate_revision(connection, revision)
         elif objects:
             if not (config.attributes.get("adopt_existing") or context.get_x_argument(as_dictionary=True).get("adopt_existing") == "true"):
                 raise RuntimeError("Unversioned existing database: verified adoption must be explicitly requested")

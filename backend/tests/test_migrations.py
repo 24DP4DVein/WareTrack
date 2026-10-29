@@ -13,10 +13,20 @@ from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
 from app.database import Base, create_database_engine, initialize_database
-from app.migration_support import BASELINE, current_revision, migration_config, upgrade_database, validate_baseline
+from app.migration_support import (
+    BASELINE,
+    HEAD,
+    current_revision,
+    migration_config,
+    upgrade_database,
+    validate_revision,
+)
 from app.models import ActivityLog, Category, Item, Location, Supplier, Transfer, User
 
 BACKEND = Path(__file__).resolve().parents[1]
+LEGACY_TABLES = (
+    "users", "categories", "suppliers", "locations", "items", "transfers", "activity_logs",
+)
 
 
 @pytest.fixture
@@ -34,8 +44,10 @@ def file_engine(database_path):
 
 
 def create_legacy(engine):
-    # Only this disposable fixture emulates the pre-Alembic create_all schema.
-    Base.metadata.create_all(engine)
+    # Only this disposable fixture emulates the pre-Alembic baseline schema.
+    with engine.begin() as connection:
+        for statement in baseline_sql():
+            connection.exec_driver_sql(statement)
     with Session(engine) as session:
         session.add_all([
             User(id=41, name="Original user", email="original@test.lv", password_hash="unchanged-hash", role="USER"),
@@ -58,20 +70,44 @@ def record_snapshot(engine):
     with engine.connect() as connection:
         return {
             name: connection.exec_driver_sql(f'SELECT * FROM "{name}" ORDER BY id').all()
-            for name in Base.metadata.tables
+            for name in LEGACY_TABLES
         }
 
 
-def test_empty_baseline_matches_current_models_and_upgrade_is_idempotent(file_engine):
+def test_fresh_head_matches_current_models_and_upgrade_is_idempotent(file_engine):
     upgrade_database(file_engine)
     with file_engine.connect() as connection:
-        assert current_revision(connection) == BASELINE
+        assert current_revision(connection) == HEAD
         assert compare_metadata(MigrationContext.configure(connection), Base.metadata) == []
-        validate_baseline(connection)
+        validate_revision(connection, HEAD)
     before = record_snapshot(file_engine)
     upgrade_database(file_engine)
     assert record_snapshot(file_engine) == before
     initialize_database(file_engine)
+
+
+def test_baseline_to_company_revision_preserves_existing_records(file_engine):
+    with file_engine.connect() as connection:
+        command.upgrade(migration_config(connection), BASELINE)
+        assert current_revision(connection) == BASELINE
+    baseline_tables = set(inspect(file_engine).get_table_names())
+    with Session(file_engine) as session:
+        session.add_all([
+            User(id=141, name="Existing user", email="existing@test.lv", password_hash="kept", role="USER"),
+            Category(id=151, name="Existing category"),
+        ])
+        session.commit()
+    before = record_snapshot(file_engine)
+
+    upgrade_database(file_engine)
+
+    assert record_snapshot(file_engine) == before
+    with file_engine.connect() as connection:
+        assert current_revision(connection) == HEAD
+        validate_revision(connection, HEAD)
+    assert set(inspect(file_engine).get_table_names()) - baseline_tables == {
+        "companies", "company_memberships", "company_join_requests",
+    }
 
 
 def test_verified_adoption_preserves_every_record_and_id(file_engine):
@@ -173,7 +209,7 @@ def test_unknown_revision_and_schema_drift_are_rejected(file_engine):
         connection.exec_driver_sql("DROP INDEX ix_items_name")
     with pytest.raises(RuntimeError, match="Incompatible"):
         upgrade_database(file_engine)
-    with pytest.raises(RuntimeError, match="Incompatible"):
+    with pytest.raises(RuntimeError, match="not migrated"):
         initialize_database(file_engine)
 
 
@@ -220,7 +256,7 @@ def test_cli_requires_explicit_url_and_supports_percent_in_path(tmp_path):
         result = subprocess.run(args + operation, cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60)
         assert result.returncode == 0, result.stdout + result.stderr
         if operation == ["current"]:
-            assert BASELINE in result.stdout
+            assert HEAD in result.stdout
 
 
 def test_documented_cli_adoption_preserves_legacy_records(file_engine, database_path):

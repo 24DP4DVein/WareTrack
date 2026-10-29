@@ -10,6 +10,8 @@ from alembic.script import ScriptDirectory
 
 BACKEND = Path(__file__).resolve().parents[1]
 BASELINE = "0001_baseline"
+HEAD = "0002_company_models"
+KNOWN_REVISIONS = {BASELINE, HEAD}
 
 
 def migration_config(connection=None, *, adopt_existing=False):
@@ -39,18 +41,23 @@ def schema_signature(rows):
     }
 
 
-@lru_cache(maxsize=1)
-def baseline_signature():
-    revision = ScriptDirectory.from_config(migration_config()).get_revision(BASELINE)
+@lru_cache(maxsize=len(KNOWN_REVISIONS))
+def revision_signature(revision):
+    if revision not in KNOWN_REVISIONS:
+        raise RuntimeError("Unknown or incomplete Alembic revision; explicit migration review required")
+    scripts = ScriptDirectory.from_config(migration_config())
     with sqlite3.connect(":memory:") as reference:
-        for statement in revision.module.SCHEMA_SQL:
+        for statement in scripts.get_revision(BASELINE).module.SCHEMA_SQL:
             reference.execute(statement)
+        if revision == HEAD:
+            for statement in scripts.get_revision(HEAD).module.SCHEMA_SQL:
+                reference.execute(statement)
         return schema_signature(reference.execute(
             "SELECT type, name, tbl_name, sql FROM sqlite_master"
         ).fetchall())
 
 
-def validate_baseline(connection):
+def validate_revision(connection, revision):
     """Fail closed on any DDL difference, including extra views/triggers/indexes.
 
     Comparing SQLite's complete DDL also checks column order/type/nullability,
@@ -60,7 +67,7 @@ def validate_baseline(connection):
     if connection.dialect.name != "sqlite":
         raise RuntimeError("This baseline supports SQLite only")
     rows = connection.exec_driver_sql("SELECT type, name, tbl_name, sql FROM sqlite_master").all()
-    actual, expected = schema_signature(rows), baseline_signature()
+    actual, expected = schema_signature(rows), revision_signature(revision)
     if actual != expected:
         changed = sorted(key[1] for key in actual.keys() | expected.keys() if actual.get(key) != expected.get(key))
         raise RuntimeError("Incompatible database schema: " + ", ".join(changed))
@@ -68,6 +75,11 @@ def validate_baseline(connection):
         raise RuntimeError("SQLite integrity check failed")
     if connection.exec_driver_sql("PRAGMA foreign_key_check").first() is not None:
         raise RuntimeError("Existing data violates foreign keys")
+
+
+def validate_baseline(connection):
+    """Verify an unversioned legacy database before baseline adoption."""
+    validate_revision(connection, BASELINE)
 
 
 def current_revision(connection):
@@ -87,12 +99,12 @@ def current_revision(connection):
             or any(sql is not None for kind, _, sql in rows if kind == "index")):
         raise RuntimeError("Invalid Alembic version table")
     revisions = connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalars().all()
-    if revisions != [BASELINE]:
+    if len(revisions) != 1 or revisions[0] not in KNOWN_REVISIONS:
         raise RuntimeError("Unknown or incomplete Alembic revision; explicit migration review required")
     return revisions[0]
 
 
 def require_migrated_database(connection):
-    if current_revision(connection) != BASELINE:
+    if current_revision(connection) != HEAD:
         raise RuntimeError("Database is not migrated; explicit schema setup/migration with Alembic is required")
-    validate_baseline(connection)
+    validate_revision(connection, HEAD)
