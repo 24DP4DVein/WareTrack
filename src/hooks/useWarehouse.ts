@@ -1,23 +1,31 @@
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { Category,CategoryInput,DashboardData,Item,ItemInput,ItemList,Location,ReportData,Supplier,SupplierInput,Transfer,TransferInput,TransferStatus,User } from "@/types";
-const q={items:["items"] as const,categories:["categories"] as const,suppliers:["suppliers"] as const,locations:["locations"] as const,transfers:["transfers"] as const,dashboard:["dashboard"] as const,reports:["reports"] as const,users:["users"] as const};
+import { useAppStore } from "@/store/useAppStore";
+import { useRouteCompanyId } from "@/hooks/useCompanies";
+import type { Category,CategoryInput,DashboardData,Item,ItemInput,ItemList,Location,LocationInput,ReportData,Supplier,SupplierInput,Transfer,TransferInput,TransferStatus,User } from "@/types";
+
 const json=(method:string,data?:unknown):RequestInit=>({method,body:data===undefined?undefined:JSON.stringify(data)});
-const invalidate=(qc:ReturnType<typeof useQueryClient>)=>Promise.all([qc.invalidateQueries({queryKey:q.items}),qc.invalidateQueries({queryKey:q.dashboard}),qc.invalidateQueries({queryKey:q.reports})]);
-export function useItems(filters:{search?:string;category?:number;status?:string;page?:number;pageSize?:number}={}){const p=new URLSearchParams();Object.entries(filters).forEach(([k,v])=>{if(v!==undefined&&v!=="")p.set(k,String(v))});return useQuery({queryKey:[...q.items,filters],queryFn:()=>api<ItemList>(`/items?${p}`)})}
-export const useCategories=()=>useQuery({queryKey:q.categories,queryFn:()=>api<Category[]>("/categories")});
-export const useSuppliers=()=>useQuery({queryKey:q.suppliers,queryFn:()=>api<Supplier[]>("/suppliers")});
-export const useLocations=()=>useQuery({queryKey:q.locations,queryFn:()=>api<Location[]>("/locations")});
-export const useDashboard=()=>useQuery({queryKey:q.dashboard,queryFn:()=>api<DashboardData>("/dashboard")});
-export const useReports=()=>useQuery({queryKey:q.reports,queryFn:()=>api<ReportData>("/reports")});
-export const useUsers=()=>useQuery({queryKey:q.users,queryFn:()=>api<User[]>("/users")});
-export function useTransfers(status="all"){return useQuery({queryKey:[...q.transfers,status],queryFn:()=>api<Transfer[]>(`/transfers?status=${status}`)})}
-export function useSaveItem(){const qc=useQueryClient();return useMutation({mutationFn:({id,data}:{id?:number;data:ItemInput})=>api<Item>(id?`/items/${id}`:"/items",json(id?"PUT":"POST",data)),onSuccess:()=>invalidate(qc)})}
-export function useDeleteItem(){const qc=useQueryClient();return useMutation({mutationFn:(id:number)=>api<void>(`/items/${id}`,{method:"DELETE"}),onSuccess:()=>invalidate(qc)})}
-export function useSaveCategory(){const qc=useQueryClient();return useMutation({mutationFn:({id,data}:{id?:number;data:CategoryInput})=>api<Category>(id?`/categories/${id}`:"/categories",json(id?"PUT":"POST",data)),onSuccess:()=>{qc.invalidateQueries({queryKey:q.categories});invalidate(qc)}})}
-export function useDeleteCategory(){const qc=useQueryClient();return useMutation({mutationFn:(id:number)=>api<void>(`/categories/${id}`,{method:"DELETE"}),onSuccess:()=>qc.invalidateQueries({queryKey:q.categories})})}
-export function useSaveSupplier(){const qc=useQueryClient();return useMutation({mutationFn:({id,data}:{id?:number;data:SupplierInput})=>api<Supplier>(id?`/suppliers/${id}`:"/suppliers",json(id?"PUT":"POST",data)),onSuccess:()=>qc.invalidateQueries({queryKey:q.suppliers})})}
-export function useDeleteSupplier(){const qc=useQueryClient();return useMutation({mutationFn:(id:number)=>api<void>(`/suppliers/${id}`,{method:"DELETE"}),onSuccess:()=>qc.invalidateQueries({queryKey:q.suppliers})})}
-export function useAddTransfer(){const qc=useQueryClient();return useMutation({mutationFn:(data:TransferInput)=>api<Transfer>("/transfers",json("POST",data)),onSuccess:()=>{qc.invalidateQueries({queryKey:q.transfers});invalidate(qc)}})}
-export function useUpdateTransferStatus(){const qc=useQueryClient();return useMutation({mutationFn:({id,status}:{id:number;status:TransferStatus})=>api<Transfer>(`/transfers/${id}`,json("PATCH",{status})),onSuccess:()=>{qc.invalidateQueries({queryKey:q.transfers});invalidate(qc)}})}
-export function useUpdateUser(){const qc=useQueryClient();return useMutation({mutationFn:({id,data}:{id:number;data:{role?:"USER"|"ADMIN";isActive?:boolean}})=>api<User>(`/users/${id}`,json("PATCH",data)),onSuccess:()=>qc.invalidateQueries({queryKey:q.users})})}
+const companyKey=(userId:number|undefined,companyId:number,resource:string,...rest:unknown[])=>[userId,companyId,resource,...rest] as const;
+function useScope(){return {companyId:useRouteCompanyId(),userId:useAppStore(s=>s.user?.id)};}
+function companyPath(companyId:number,path:string){if(!companyId)throw new Error("Nav izvēlēts uzņēmums");return `/companies/${companyId}${path}`;}
+function useInvalidate(){const qc=useQueryClient(),{userId,companyId}=useScope();return ()=>Promise.all(["items","dashboard","reports","activity","categories","locations"].map(resource=>qc.invalidateQueries({queryKey:companyKey(userId,companyId,resource)})));}
+
+export function useItems(filters:{search?:string;category?:number;status?:string;page?:number;pageSize?:number}={}){const {userId,companyId}=useScope();const p=new URLSearchParams();Object.entries(filters).forEach(([k,v])=>{if(v!==undefined&&v!=="")p.set(k==="pageSize"?"page_size":k,String(v))});return useQuery({queryKey:companyKey(userId,companyId,"items",filters),queryFn:()=>api<ItemList>(companyPath(companyId,`/items?${p}`)),enabled:!!userId&&companyId>0})}
+export function useCategories(){const {userId,companyId}=useScope();return useQuery({queryKey:companyKey(userId,companyId,"categories"),queryFn:()=>api<Category[]>(companyPath(companyId,"/categories")),enabled:!!userId&&companyId>0});}
+export function useSuppliers(){const {userId,companyId}=useScope();return useQuery({queryKey:companyKey(userId,companyId,"suppliers"),queryFn:()=>api<Supplier[]>(companyPath(companyId,"/suppliers")),enabled:!!userId&&companyId>0});}
+export function useLocations(){const {userId,companyId}=useScope();return useQuery({queryKey:companyKey(userId,companyId,"locations"),queryFn:()=>api<Location[]>(companyPath(companyId,"/locations")),enabled:!!userId&&companyId>0});}
+export function useDashboard(){const {userId,companyId}=useScope();return useQuery({queryKey:companyKey(userId,companyId,"dashboard"),queryFn:()=>api<DashboardData>(companyPath(companyId,"/dashboard")),enabled:!!userId&&companyId>0});}
+export function useReports(){const {userId,companyId}=useScope();return useQuery({queryKey:companyKey(userId,companyId,"reports"),queryFn:()=>api<ReportData>(companyPath(companyId,"/reports")),enabled:!!userId&&companyId>0});}
+export function useUsers(){const userId=useAppStore(s=>s.user?.id);return useQuery({queryKey:[userId,"admin","users"],queryFn:()=>api<User[]>("/users"),enabled:!!userId});}
+export function useTransfers(status="all"){const {userId,companyId}=useScope();return useQuery({queryKey:companyKey(userId,companyId,"transfers",status),queryFn:()=>api<Transfer[]>(companyPath(companyId,`/transfers?status=${status}`)),enabled:!!userId&&companyId>0})}
+export function useSaveItem(){const {companyId}=useScope(),invalidate=useInvalidate();return useMutation({mutationFn:({id,data}:{id?:number;data:ItemInput})=>api<Item>(companyPath(companyId,id?`/items/${id}`:"/items"),json(id?"PUT":"POST",data)),onSuccess:invalidate})}
+export function useDeleteItem(){const {companyId}=useScope(),invalidate=useInvalidate();return useMutation({mutationFn:(id:number)=>api<void>(companyPath(companyId,`/items/${id}`),{method:"DELETE"}),onSuccess:invalidate})}
+export function useSaveCategory(){const {companyId}=useScope(),invalidate=useInvalidate();return useMutation({mutationFn:({id,data}:{id?:number;data:CategoryInput})=>api<Category>(companyPath(companyId,id?`/categories/${id}`:"/categories"),json(id?"PUT":"POST",data)),onSuccess:invalidate})}
+export function useDeleteCategory(){const {companyId}=useScope(),invalidate=useInvalidate();return useMutation({mutationFn:(id:number)=>api<void>(companyPath(companyId,`/categories/${id}`),{method:"DELETE"}),onSuccess:invalidate})}
+export function useSaveSupplier(){const {companyId,userId}=useScope(),qc=useQueryClient();return useMutation({mutationFn:({id,data}:{id?:number;data:SupplierInput})=>api<Supplier>(companyPath(companyId,id?`/suppliers/${id}`:"/suppliers"),json(id?"PUT":"POST",data)),onSuccess:()=>qc.invalidateQueries({queryKey:companyKey(userId,companyId,"suppliers")})})}
+export function useDeleteSupplier(){const {companyId,userId}=useScope(),qc=useQueryClient();return useMutation({mutationFn:(id:number)=>api<void>(companyPath(companyId,`/suppliers/${id}`),{method:"DELETE"}),onSuccess:()=>qc.invalidateQueries({queryKey:companyKey(userId,companyId,"suppliers")})})}
+export function useSaveLocation(){const {companyId}=useScope(),invalidate=useInvalidate();return useMutation({mutationFn:({id,data}:{id?:number;data:LocationInput})=>api<Location>(companyPath(companyId,id?`/locations/${id}`:"/locations"),json(id?"PUT":"POST",data)),onSuccess:invalidate})}
+export function useDeleteLocation(){const {companyId}=useScope(),invalidate=useInvalidate();return useMutation({mutationFn:(id:number)=>api<void>(companyPath(companyId,`/locations/${id}`),{method:"DELETE"}),onSuccess:invalidate})}
+export function useAddTransfer(){const {companyId}=useScope(),invalidate=useInvalidate();return useMutation({mutationFn:(data:TransferInput)=>api<Transfer>(companyPath(companyId,"/transfers"),json("POST",data)),onSuccess:invalidate})}
+export function useUpdateTransferStatus(){const {companyId}=useScope(),invalidate=useInvalidate();return useMutation({mutationFn:({id,status}:{id:number;status:TransferStatus})=>api<Transfer>(companyPath(companyId,`/transfers/${id}`),json("PATCH",{status})),onSuccess:invalidate})}
+export function useUpdateUser(){const qc=useQueryClient(),userId=useAppStore(s=>s.user?.id);return useMutation({mutationFn:({id,data}:{id:number;data:{role?:"USER"|"ADMIN";isActive?:boolean}})=>api<User>(`/users/${id}`,json("PATCH",data)),onSuccess:()=>qc.invalidateQueries({queryKey:[userId,"admin","users"]})})}

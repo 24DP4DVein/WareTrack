@@ -16,3 +16,12 @@ export interface DashboardData { totalItems:number; totalUnits:number; lowStockC
 export interface ReportData { totalUnits:number; totalValue:number; completedTransfers:number; lowStockCount:number; categoryDistribution:{name:string;units:number}[]; topItems:{name:string;movement:number}[] }
 export interface CategoryInput { name:string; description:string; icon:string; color:Category["color"] }
 export interface SupplierInput { name:string; contactPerson:string; email:string; phone:string; address:string; category:string; paymentTerms:Supplier["paymentTerms"] }
+export type CompanyRole = "LIETOTAJS" | "VADITAJS" | "ADMIN";
+export type JoinRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
+export interface PublicCompany { id:number; name:string; slug:string }
+export interface Company extends PublicCompany { isActive:boolean; createdAt:string; updatedAt:string }
+export interface MyCompany extends PublicCompany { role:CompanyRole }
+export interface JoinRequest { id:number; companyId:number; companyName:string; status:JoinRequestStatus; requestedAt:string; reviewedAt:string|null; rejectionReason:string|null }
+export interface ManagedJoinRequest extends JoinRequest { userId:number; userName:string; userEmail:string }
+export interface CompanyMembership { id:number; companyId:number; userId:number; userName:string; userEmail:string; role:Exclude<CompanyRole,"ADMIN">; isActive:boolean; approvedAt:string|null; revokedAt:string|null }
+export interface LocationInput { code:string; name:string; capacity:number }
