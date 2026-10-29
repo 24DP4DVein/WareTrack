@@ -19,6 +19,7 @@ os.environ["DATABASE_URL"] = "sqlite://"
 from app.auth.security import hash_password
 from app.database import create_database_engine, engine as application_engine, get_db, initialize_database
 from app.main import app
+from app.migration_support import upgrade_database
 from app.models import Category, Item, Location, Supplier, User
 
 
@@ -31,6 +32,7 @@ def forbid_application_database(*_):
 def test_engine():
     engine = create_database_engine("sqlite://", poolclass=StaticPool)
     try:
+        upgrade_database(engine)
         initialize_database(engine)
         yield engine
     finally:

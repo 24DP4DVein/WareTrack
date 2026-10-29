@@ -1,7 +1,7 @@
 ﻿import os
 from pathlib import Path
 
-from sqlalchemy import create_engine, event, inspect
+from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
@@ -34,23 +34,17 @@ class Base(DeclarativeBase):
 
 
 def initialize_database(db_engine: Engine) -> None:
-    """Bootstrap empty SQLite only; never repair or migrate an existing schema."""
-    # Ensure metadata is populated even when called outside app.main.
-    from app import models  # noqa: F401
+    """Validate readiness at startup; never create, migrate or stamp tables."""
+    from app.migration_support import require_migrated_database
 
-    with db_engine.begin() as connection:
-        inspector = inspect(connection)
-        tables = set(inspector.get_table_names())
-        views = inspector.get_view_names()
-        if not tables and not views and db_engine.dialect.name == "sqlite":
-            Base.metadata.create_all(bind=connection)
-            return
-        missing = set(Base.metadata.tables) - tables
-        if missing:
-            raise RuntimeError(
-                "Database schema is incomplete; explicit schema setup/migration is required. "
-                f"Missing tables: {', '.join(sorted(missing))}"
-            )
+    # Avoid even creating an empty SQLite file when bootstrap was forgotten.
+    if db_engine.dialect.name == "sqlite":
+        database = db_engine.url.database
+        if database and database != ":memory:" and not db_engine.url.query.get("uri"):
+            if not Path(database).is_file():
+                raise RuntimeError("Database is not migrated; explicit schema setup/migration with Alembic is required")
+    with db_engine.connect() as connection:
+        require_migrated_database(connection)
 
 
 def get_db():

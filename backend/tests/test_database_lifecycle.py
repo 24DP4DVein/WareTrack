@@ -43,7 +43,7 @@ import app.main
     assert not database.exists()
 
 
-def test_normal_lifespan_bootstraps_empty_development_database(tmp_path):
+def test_normal_lifespan_after_explicit_development_migration(tmp_path):
     database = tmp_path / "development.db"
     run_python(
         """
@@ -53,11 +53,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import inspect
 from app.database import Base, engine
 from app.main import app
+from app.migration_support import upgrade_database
 assert not Path(sys.argv[1]).exists()
+upgrade_database(engine)
 with TestClient(app) as client:
     assert client.get('/api/health').status_code == 200
     assert client.get('/api/items').json()['total'] == 0
-    assert set(inspect(engine).get_table_names()) == set(Base.metadata.tables)
+    assert set(inspect(engine).get_table_names()) == set(Base.metadata.tables) | {'alembic_version'}
     response = client.post('/api/auth/register', json={
         'name': 'Startup test', 'email': 'startup@test.lv',
         'password': 'Password123!', 'passwordConfirmation': 'Password123!',
