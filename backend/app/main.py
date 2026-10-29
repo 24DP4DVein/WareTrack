@@ -13,40 +13,45 @@ from app.routers import auth, dashboard, items, master_data, transfers, users
 
 
 def bootstrap_admin(environment: str | None = None, session_factory=None):
-    """Create a development admin only when the environment permits it.
+    """Create an admin only when bootstrap is explicitly enabled.
 
-    Production must not silently create a privileged user. In development/test,
-    credentials can still be configured via environment variables.
+    No predictable default admin password is shipped. In production this stays
+    disabled; in development/test, an operator must opt in with a strong password.
     """
     env_name = (environment or os.getenv("WARETRACK_ENV") or os.getenv("ENVIRONMENT") or "development").lower()
     if env_name in {"production", "prod"}:
         return {"created": False, "environment": env_name, "reason": "production bootstrap disabled"}
 
-    session_maker = session_factory or SessionLocal
-    email = (os.getenv("WARETRACK_ADMIN_EMAIL") or "admin@waretrack.lv").lower()
-    password = os.getenv("WARETRACK_ADMIN_PASSWORD") or "Admin123!"
+    if os.getenv("WARETRACK_BOOTSTRAP_ADMIN", "false").lower() not in {"1", "true", "yes", "on"}:
+        return {"created": False, "environment": env_name, "reason": "explicit bootstrap disabled"}
 
+    email = os.getenv("WARETRACK_ADMIN_EMAIL")
+    password = os.getenv("WARETRACK_ADMIN_PASSWORD")
+    if not email or not password:
+        raise RuntimeError("WARETRACK_ADMIN_EMAIL and WARETRACK_ADMIN_PASSWORD must be set when bootstrap is enabled")
+
+    session_maker = session_factory or SessionLocal
     with session_maker() as db:
-        existing = db.scalar(select(User).where(func.lower(User.email) == email))
+        existing = db.scalar(select(User).where(func.lower(User.email) == email.lower()))
         if existing is not None:
-            return {"created": False, "environment": env_name, "email": email, "reason": "admin already exists"}
+            return {"created": False, "environment": env_name, "email": email.lower(), "reason": "admin already exists"}
 
         admin = User(
             name="WareTrack Administrator",
-            email=email,
+            email=email.lower(),
             password_hash=hash_password(password),
             role=Role.ADMIN,
             is_active=True,
         )
         db.add(admin)
         db.commit()
-        return {"created": True, "environment": env_name, "email": email, "reason": "dev bootstrap"}
+        return {"created": True, "environment": env_name, "email": email.lower(), "reason": "explicit bootstrap"}
 
 
 # Create database tables.
 Base.metadata.create_all(bind=engine)
 
-# Initialize the default administrator only in non-production environments.
+# Initialize the default administrator only with explicit opt-in.
 bootstrap_admin()
 
 
