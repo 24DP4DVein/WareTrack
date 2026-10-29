@@ -10,7 +10,7 @@ from app.auth.company_access import (
     require_company_read_access,
 )
 from app.database import get_db
-from app.models import Category, Item, Location, Supplier
+from app.models import Category, InventoryBalance, Item, Location, Supplier
 from app.schemas import (
     CategoryIn, CategoryOut, ItemIn, ItemList, ItemOut, ItemUpdate,
     LocationIn, LocationOut, SupplierIn, SupplierOut,
@@ -113,6 +113,10 @@ def item_create(company_id: int, data: ItemIn, db: Session = Depends(get_db),
     item = Item(company_id=company_id, **data.model_dump())
     db.add(item)
     _flush_or_conflict(db, "SKU already exists in this company")
+    db.add(InventoryBalance(
+        company_id=company_id, item_id=item.id, location_id=item.location_id,
+        quantity=item.stock, reserved=0,
+    ))
     log_activity(db, access.user, "create", "item", item.id,
                  f'Created item "{item.name}"', company_id=company_id)
     db.commit()
@@ -125,6 +129,17 @@ def item_update(company_id: int, item_id: int, data: ItemUpdate,
                 access: CompanyAccessContext = Depends(require_company_edit_access)):
     item = _load_item(db, company_id, item_id)
     _validate_item_relations(db, company_id, data)
+    balances = list(db.scalars(select(InventoryBalance).where(
+        InventoryBalance.company_id == company_id,
+        InventoryBalance.item_id == item.id,
+    )))
+    if balances and (
+        data.stock != sum(balance.quantity for balance in balances)
+        or data.location_id != item.location_id
+    ):
+        raise HTTPException(
+            409, "Ledger-managed stock and location cannot be changed through item update"
+        )
     if _conflict(db, Item, company_id, Item.sku, data.sku, exclude_id=item.id):
         raise HTTPException(409, "SKU already exists in this company")
     for key, value in data.model_dump().items():
@@ -143,6 +158,8 @@ def item_delete(company_id: int, item_id: int, db: Session = Depends(get_db),
     if item.transfers:
         raise HTTPException(409, "Item with transfer history cannot be deleted")
     name = item.name
+    for balance in list(item.inventory_balances):
+        db.delete(balance)
     db.delete(item)
     log_activity(db, access.user, "delete", "item", item_id,
                  f'Deleted item "{name}"', company_id=company_id)
@@ -376,6 +393,11 @@ def location_delete(company_id: int, location_id: int, db: Session = Depends(get
     if location is None: raise HTTPException(404, "Location not found")
     if db.scalar(select(Item.id).where(Item.company_id == company_id, Item.location_id == location.id)):
         raise HTTPException(409, "Location is used by items")
+    if db.scalar(select(InventoryBalance.id).where(
+        InventoryBalance.company_id == company_id,
+        InventoryBalance.location_id == location.id,
+    )):
+        raise HTTPException(409, "Location has inventory balances")
     name = location.name; db.delete(location)
     log_activity(db, access.user, "delete", "location", location_id,
                  f'Deleted location "{name}"', company_id=company_id)
@@ -393,3 +415,8 @@ for path in ("/items", "/categories", "/suppliers", "/locations", "/transfers"):
                          methods=["GET", "PUT", "PATCH", "DELETE"])
 for path in ("/dashboard", "/reports", "/activity"):
     legacy.add_api_route(path, _legacy_disabled, methods=["GET"])
+
+
+from app.routers.company_operations import router as company_operations_router
+
+router.include_router(company_operations_router)

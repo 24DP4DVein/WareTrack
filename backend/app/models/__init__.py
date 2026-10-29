@@ -56,6 +56,7 @@ class Company(Base):
     items = relationship("Item", back_populates="company")
     transfers = relationship("Transfer", back_populates="company")
     activity_logs = relationship("ActivityLog", back_populates="company")
+    inventory_balances = relationship("InventoryBalance", back_populates="company")
 
 
 class CompanyMembership(Base):
@@ -236,6 +237,7 @@ class Item(Base):
     supplier = relationship("Supplier", back_populates="items")
     location = relationship("Location", back_populates="items")
     transfers = relationship("Transfer", back_populates="item")
+    inventory_balances = relationship("InventoryBalance", back_populates="item")
 
 
 class Transfer(Base):
@@ -277,4 +279,36 @@ class ActivityLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     company = relationship("Company", back_populates="activity_logs")
     user = relationship("User", back_populates="activities")
+
+
+class InventoryBalance(Base):
+    __tablename__ = "inventory_balances"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id", "item_id", "location_id",
+            name="uq_inventory_balances_company_item_location",
+        ),
+        CheckConstraint("quantity >= 0", name="ck_inventory_balances_quantity"),
+        CheckConstraint("reserved >= 0", name="ck_inventory_balances_reserved"),
+        CheckConstraint(
+            "reserved <= quantity", name="ck_inventory_balances_reserved_quantity"
+        ),
+        Index("ix_inventory_balances_company_location", "company_id", "location_id"),
+        Index("ix_inventory_balances_company_item", "company_id", "item_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="RESTRICT"))
+    item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="RESTRICT"))
+    location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"))
+    quantity: Mapped[int] = mapped_column(Integer, default=0)
+    reserved: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    company = relationship("Company", back_populates="inventory_balances")
+    item = relationship("Item", back_populates="inventory_balances")
+    location = relationship("Location")
 

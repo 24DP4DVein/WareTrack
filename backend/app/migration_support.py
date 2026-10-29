@@ -12,8 +12,12 @@ BACKEND = Path(__file__).resolve().parents[1]
 BASELINE = "0001_baseline"
 COMPANY_MODELS = "0002_company_models"
 COMPANY_OWNERSHIP = "0003_company_ownership"
-HEAD = "0004_company_scoped_uniqueness"
-REVISION_ORDER = (BASELINE, COMPANY_MODELS, COMPANY_OWNERSHIP, HEAD)
+COMPANY_SCOPED_UNIQUENESS = "0004_company_scoped_uniqueness"
+HEAD = "0005_inventory_balances"
+REVISION_ORDER = (
+    BASELINE, COMPANY_MODELS, COMPANY_OWNERSHIP,
+    COMPANY_SCOPED_UNIQUENESS, HEAD,
+)
 KNOWN_REVISIONS = set(REVISION_ORDER)
 
 

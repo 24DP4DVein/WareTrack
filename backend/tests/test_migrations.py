@@ -138,8 +138,12 @@ def test_baseline_to_company_revision_preserves_existing_records(file_engine):
     with file_engine.connect() as connection:
         assert current_revision(connection) == HEAD
         validate_revision(connection, HEAD)
+        assert connection.exec_driver_sql(
+            "SELECT count(*) FROM inventory_balances"
+        ).scalar_one() == 0
     assert set(inspect(file_engine).get_table_names()) - baseline_tables == {
         "companies", "company_memberships", "company_join_requests",
+        "inventory_balances",
     }
 
 
