@@ -10,8 +10,10 @@ from alembic.script import ScriptDirectory
 
 BACKEND = Path(__file__).resolve().parents[1]
 BASELINE = "0001_baseline"
-HEAD = "0002_company_models"
-KNOWN_REVISIONS = {BASELINE, HEAD}
+COMPANY_MODELS = "0002_company_models"
+HEAD = "0003_company_ownership"
+REVISION_ORDER = (BASELINE, COMPANY_MODELS, HEAD)
+KNOWN_REVISIONS = set(REVISION_ORDER)
 
 
 def migration_config(connection=None, *, adopt_existing=False):
@@ -47,11 +49,11 @@ def revision_signature(revision):
         raise RuntimeError("Unknown or incomplete Alembic revision; explicit migration review required")
     scripts = ScriptDirectory.from_config(migration_config())
     with sqlite3.connect(":memory:") as reference:
-        for statement in scripts.get_revision(BASELINE).module.SCHEMA_SQL:
-            reference.execute(statement)
-        if revision == HEAD:
-            for statement in scripts.get_revision(HEAD).module.SCHEMA_SQL:
+        for revision_id in REVISION_ORDER:
+            for statement in scripts.get_revision(revision_id).module.SCHEMA_SQL:
                 reference.execute(statement)
+            if revision_id == revision:
+                break
         return schema_signature(reference.execute(
             "SELECT type, name, tbl_name, sql FROM sqlite_master"
         ).fetchall())

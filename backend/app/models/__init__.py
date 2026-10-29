@@ -50,6 +50,12 @@ class Company(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     memberships = relationship("CompanyMembership", back_populates="company")
     join_requests = relationship("CompanyJoinRequest", back_populates="company")
+    categories = relationship("Category", back_populates="company")
+    suppliers = relationship("Supplier", back_populates="company")
+    locations = relationship("Location", back_populates="company")
+    items = relationship("Item", back_populates="company")
+    transfers = relationship("Transfer", back_populates="company")
+    activity_logs = relationship("ActivityLog", back_populates="company")
 
 
 class CompanyMembership(Base):
@@ -135,17 +141,24 @@ class CompanyJoinRequest(Base):
 class Category(Base):
     __tablename__ = "categories"
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(100), unique=True)
     description: Mapped[str] = mapped_column(Text, default="")
     icon: Mapped[str] = mapped_column(String(30), default="Package")
     color: Mapped[str] = mapped_column(String(20), default="blue")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    company = relationship("Company", back_populates="categories")
     items = relationship("Item", back_populates="category")
 
 
 class Supplier(Base):
     __tablename__ = "suppliers"
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(150), unique=True)
     contact_person: Mapped[str] = mapped_column(String(100))
     email: Mapped[str] = mapped_column(String(255), unique=True)
@@ -155,22 +168,30 @@ class Supplier(Base):
     payment_terms: Mapped[str] = mapped_column(String(20), default="net30")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    company = relationship("Company", back_populates="suppliers")
     items = relationship("Item", back_populates="supplier")
 
 
 class Location(Base):
     __tablename__ = "locations"
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id"), nullable=True, index=True
+    )
     code: Mapped[str] = mapped_column(String(30), unique=True)
     name: Mapped[str] = mapped_column(String(120))
     capacity: Mapped[int] = mapped_column(Integer, default=1000)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    company = relationship("Company", back_populates="locations")
     items = relationship("Item", back_populates="location")
 
 
 class Item(Base):
     __tablename__ = "items"
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(100), index=True)
     sku: Mapped[str] = mapped_column(String(30), unique=True, index=True)
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"))
@@ -182,6 +203,7 @@ class Item(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    company = relationship("Company", back_populates="items")
     category = relationship("Category", back_populates="items")
     supplier = relationship("Supplier", back_populates="items")
     location = relationship("Location", back_populates="items")
@@ -192,6 +214,9 @@ class Transfer(Base):
     __tablename__ = "transfers"
     __table_args__ = (UniqueConstraint("code"),)
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id"), nullable=True, index=True
+    )
     code: Mapped[str] = mapped_column(String(30), index=True)
     item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="RESTRICT"))
     source_location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"))
@@ -203,6 +228,7 @@ class Transfer(Base):
     creator_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    company = relationship("Company", back_populates="transfers")
     item = relationship("Item", back_populates="transfers")
     source_location = relationship("Location", foreign_keys=[source_location_id])
     destination_location = relationship("Location", foreign_keys=[destination_location_id])
@@ -212,11 +238,15 @@ class Transfer(Base):
 class ActivityLog(Base):
     __tablename__ = "activity_logs"
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int | None] = mapped_column(
+        ForeignKey("companies.id"), nullable=True, index=True
+    )
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     action: Mapped[str] = mapped_column(String(60))
     entity_type: Mapped[str] = mapped_column(String(40))
     entity_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
     message: Mapped[str] = mapped_column(String(300))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    company = relationship("Company", back_populates="activity_logs")
     user = relationship("User", back_populates="activities")
 

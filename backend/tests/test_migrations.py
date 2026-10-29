@@ -10,8 +10,8 @@ from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import inspect
-from sqlalchemy.orm import Session
 
+from app import models  # noqa: F401 - register all tables in Base.metadata
 from app.database import Base, create_database_engine, initialize_database
 from app.migration_support import (
     BASELINE,
@@ -21,12 +21,26 @@ from app.migration_support import (
     upgrade_database,
     validate_revision,
 )
-from app.models import ActivityLog, Category, Item, Location, Supplier, Transfer, User
 
 BACKEND = Path(__file__).resolve().parents[1]
-LEGACY_TABLES = (
-    "users", "categories", "suppliers", "locations", "items", "transfers", "activity_logs",
-)
+LEGACY_COLUMNS = {
+    "users": "id, name, email, password_hash, role, is_active, created_at",
+    "categories": "id, name, description, icon, color, created_at",
+    "suppliers": (
+        "id, name, contact_person, email, phone, address, category, payment_terms, "
+        "is_active, created_at"
+    ),
+    "locations": "id, code, name, capacity, created_at",
+    "items": (
+        "id, name, sku, category_id, supplier_id, location_id, stock, min_stock, price, "
+        "description, created_at, updated_at"
+    ),
+    "transfers": (
+        "id, code, item_id, source_location_id, destination_location_id, quantity, status, "
+        "priority, notes, creator_id, created_at, updated_at"
+    ),
+    "activity_logs": "id, user_id, action, entity_type, entity_id, message, created_at",
+}
 
 
 @pytest.fixture
@@ -48,29 +62,45 @@ def create_legacy(engine):
     with engine.begin() as connection:
         for statement in baseline_sql():
             connection.exec_driver_sql(statement)
-    with Session(engine) as session:
-        session.add_all([
-            User(id=41, name="Original user", email="original@test.lv", password_hash="unchanged-hash", role="USER"),
-            Category(id=51, name="Original category"),
-            Location(id=61, code="SOURCE", name="Source"),
-            Location(id=62, code="DEST", name="Destination"),
-            Supplier(id=71, name="Original supplier", contact_person="Contact", email="supplier@test.lv", phone="1234567", address="Original address"),
-        ])
-        session.flush()
-        session.add(Item(id=81, name="Original item", sku="ORIGINAL", category_id=51, supplier_id=71, location_id=61, stock=9, price=12.5))
-        session.flush()
-        session.add_all([
-            Transfer(id=91, code="ORIGINAL-TRANSFER", item_id=81, source_location_id=61, destination_location_id=62, quantity=2, creator_id=41),
-            ActivityLog(id=101, user_id=41, action="create", entity_type="item", entity_id="81", message="Original history"),
-        ])
-        session.commit()
+        connection.exec_driver_sql(
+            "INSERT INTO users VALUES (41, 'Original user', 'original@test.lv', "
+            "'unchanged-hash', 'USER', 1, CURRENT_TIMESTAMP)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO categories VALUES "
+            "(51, 'Original category', '', 'Package', 'blue', CURRENT_TIMESTAMP)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO locations VALUES "
+            "(61, 'SOURCE', 'Source', 1000, CURRENT_TIMESTAMP), "
+            "(62, 'DEST', 'Destination', 1000, CURRENT_TIMESTAMP)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO suppliers VALUES (71, 'Original supplier', 'Contact', "
+            "'supplier@test.lv', '1234567', 'Original address', 'Original', 'net30', 1, "
+            "CURRENT_TIMESTAMP)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO items VALUES (81, 'Original item', 'ORIGINAL', 51, 71, 61, 9, 0, "
+            "12.5, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO transfers VALUES (91, 'ORIGINAL-TRANSFER', 81, 61, 62, 2, "
+            "'pending', 'normal', '', 41, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO activity_logs VALUES "
+            "(101, 41, 'create', 'item', '81', 'Original history', CURRENT_TIMESTAMP)"
+        )
 
 
 def record_snapshot(engine):
     with engine.connect() as connection:
         return {
-            name: connection.exec_driver_sql(f'SELECT * FROM "{name}" ORDER BY id').all()
-            for name in LEGACY_TABLES
+            name: connection.exec_driver_sql(
+                f'SELECT {columns} FROM "{name}" ORDER BY id'
+            ).all()
+            for name, columns in LEGACY_COLUMNS.items()
         }
 
 
@@ -91,12 +121,15 @@ def test_baseline_to_company_revision_preserves_existing_records(file_engine):
         command.upgrade(migration_config(connection), BASELINE)
         assert current_revision(connection) == BASELINE
     baseline_tables = set(inspect(file_engine).get_table_names())
-    with Session(file_engine) as session:
-        session.add_all([
-            User(id=141, name="Existing user", email="existing@test.lv", password_hash="kept", role="USER"),
-            Category(id=151, name="Existing category"),
-        ])
-        session.commit()
+    with file_engine.begin() as connection:
+        connection.exec_driver_sql(
+            "INSERT INTO users VALUES "
+            "(141, 'Existing user', 'existing@test.lv', 'kept', 'USER', 1, CURRENT_TIMESTAMP)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO categories VALUES "
+            "(151, 'Existing category', '', 'Package', 'blue', CURRENT_TIMESTAMP)"
+        )
     before = record_snapshot(file_engine)
 
     upgrade_database(file_engine)
