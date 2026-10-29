@@ -2,7 +2,7 @@
 
 ## Область и изменение запуска
 
-Alembic управляет схемой SQLite. Baseline `0001_baseline` фиксирует прежние users, categories, suppliers, locations, items, transfers и activity_logs. Ревизия `0002_company_models` добавляет companies, company_memberships и company_join_requests. Ревизия `0003_company_ownership` добавляет nullable company_id и индекс в шесть прежних складских таблиц, не назначая владельца. Старые записи, ID и глобальные роли USER/ADMIN не меняются. SQL выпущенных ревизий — неизменяемые снимки, которые не строятся из будущих ORM-моделей при запуске миграции.
+Alembic управляет схемой SQLite. Baseline `0001_baseline` фиксирует прежние users, categories, suppliers, locations, items, transfers и activity_logs. Ревизии `0002`–`0005` добавляют компании, временно nullable-владение, company-scoped уникальность и ledger остатков. Финальная `0006_company_integrity` требует заполненного владения, делает шесть `company_id` обязательными и добавляет составные FK, которые блокируют межфирменные связи. Она также закрепляет неотрицательные остатки и согласованность ledger. Старые записи и ID не переназначаются автоматически. SQL выпущенных ревизий — неизменяемые снимки.
 
 `backend/migrations/env.py` импортирует все модели до установки `target_metadata = Base.metadata`; включены `render_as_batch`, сравнение типов и server defaults. `backend/alembic.ini` не содержит URL/паролей. Для CLI нужен явно заданный `DATABASE_URL`; значение не сохраняется и не проходит интерполяцию ConfigParser (символ `%` допустим). Путь к alembic.ini можно указывать абсолютным, поэтому команды работают и вне backend. Относительный путь SQLite в DATABASE_URL по-прежнему считается от текущего рабочего каталога; для безопасности используйте абсолютный.
 
@@ -53,7 +53,7 @@ python -m alembic -c alembic.ini check
 
 Сравнение консервативное: игнорируются пробелы вне строковых литералов, но даже эквивалентные иначе записанные определения могут быть отклонены. Это повод для ручного анализа схемы, а не разрешение ослаблять проверку или удалять объекты. Baseline принятия соответствует фактическим текущим ORM-типам: например, price FLOAT и role VARCHAR(20), без новых CHECK и без server defaults для клиентских default SQLAlchemy.
 
-Успешное принятие не пересоздаёт прежние предметные таблицы и не обновляет записи: Alembic проверяет baseline, добавляет служебную таблицу ревизии, создаёт три пустые company-таблицы и добавляет nullable company_id. Все прежние company_id остаются NULL до отдельного утверждённого backfill из [company-ownership-backfill.md](company-ownership-backfill.md). Сверить все прежние значения, ID и связи до/после. Не выполнять `alembic stamp head`: изменение версии через stamp блокируется и откатывается. Версия должна появляться только после выполненного или проверенного baseline через upgrade.
+Принятие legacy-БД выполняют сначала только до `0005_inventory_balances`: Alembic проверяет baseline, добавляет служебную таблицу ревизии и переходные структуры, сохраняя прежние company_id как NULL. Затем нужен отдельный утверждённый backfill из [company-ownership-backfill.md](company-ownership-backfill.md). Только после dry-run, apply и сверки данных разрешён `upgrade head`. Прямой переход legacy-БД на head блокируется при первом нерешённом владельце. Не выполнять `alembic stamp head`: stamp отключён.
 
 ## Проверка версии и upgrade одноразовой копии
 

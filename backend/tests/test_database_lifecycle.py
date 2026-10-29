@@ -129,6 +129,7 @@ def test_each_client_gets_fresh_database(client, test_engine, iteration):
     assert test_engine.url.database in (None, "", ":memory:")
     assert client.get("/api/items").status_code == 410
     with test_engine.begin() as connection:
+        connection.execute(text("DELETE FROM inventory_balances"))
         connection.execute(text("DELETE FROM items"))
     assert client.get("/api/items").status_code == 410
 

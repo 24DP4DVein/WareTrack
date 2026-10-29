@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 import sqlite3
 import subprocess
@@ -16,10 +17,14 @@ from app.database import Base, create_database_engine, initialize_database
 from app.migration_support import (
     BASELINE,
     HEAD,
+    INVENTORY_BALANCES,
     current_revision,
     migration_config,
     upgrade_database,
     validate_revision,
+)
+from app.ownership_backfill import (
+    OWNED_TABLES, OwnershipAssignment, OwnershipPlan, run_ownership_backfill,
 )
 
 BACKEND = Path(__file__).resolve().parents[1]
@@ -104,6 +109,34 @@ def record_snapshot(engine):
         }
 
 
+def finalize_legacy_database(engine):
+    """Apply an explicit test-only ownership registry, then the final revision."""
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "INSERT INTO companies "
+            "(id,name,slug,is_active,created_at,updated_at) VALUES "
+            "(1001,'Approved legacy owner','approved-legacy-owner',1,"
+            "CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)"
+        )
+    assignments = []
+    with engine.connect() as connection:
+        for table in OWNED_TABLES:
+            assignments.extend(
+                OwnershipAssignment(table, row_id, 1001)
+                for row_id in connection.exec_driver_sql(
+                    f'SELECT id FROM "{table}" ORDER BY id'
+                ).scalars()
+            )
+    plan = OwnershipPlan(
+        approved_by="Migration test",
+        approved_at=datetime.now(timezone.utc),
+        reason="Explicit disposable legacy ownership fixture",
+        assignments=tuple(assignments),
+    )
+    run_ownership_backfill(engine, plan, apply=True)
+    upgrade_database(engine)
+
+
 def test_fresh_head_matches_current_models_and_upgrade_is_idempotent(file_engine):
     upgrade_database(file_engine)
     with file_engine.connect() as connection:
@@ -132,12 +165,12 @@ def test_baseline_to_company_revision_preserves_existing_records(file_engine):
         )
     before = record_snapshot(file_engine)
 
-    upgrade_database(file_engine)
+    upgrade_database(file_engine, revision=INVENTORY_BALANCES)
 
     assert record_snapshot(file_engine) == before
     with file_engine.connect() as connection:
-        assert current_revision(connection) == HEAD
-        validate_revision(connection, HEAD)
+        assert current_revision(connection) == INVENTORY_BALANCES
+        validate_revision(connection, INVENTORY_BALANCES)
         assert connection.exec_driver_sql(
             "SELECT count(*) FROM inventory_balances"
         ).scalar_one() == 0
@@ -153,9 +186,11 @@ def test_verified_adoption_preserves_every_record_and_id(file_engine):
     with pytest.raises(RuntimeError, match="explicitly requested"):
         upgrade_database(file_engine)
     assert "alembic_version" not in inspect(file_engine).get_table_names()
-    upgrade_database(file_engine, adopt_existing=True)
+    upgrade_database(
+        file_engine, adopt_existing=True, revision=INVENTORY_BALANCES
+    )
     assert record_snapshot(file_engine) == before
-    upgrade_database(file_engine, adopt_existing=True)
+    finalize_legacy_database(file_engine)
     assert record_snapshot(file_engine) == before
     initialize_database(file_engine)
 
@@ -304,9 +339,10 @@ def test_documented_cli_adoption_preserves_legacy_records(file_engine, database_
     env.update(DATABASE_URL=f"sqlite:///{database_path.as_posix()}", PYTHONDONTWRITEBYTECODE="1")
     result = subprocess.run(
         [sys.executable, "-B", "-m", "alembic", "-c", str(BACKEND / "alembic.ini"),
-         "-x", "adopt_existing=true", "upgrade", "head"],
+         "-x", "adopt_existing=true", "upgrade", INVENTORY_BALANCES],
         cwd=database_path.parent, env=env, capture_output=True, text=True, timeout=60,
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert record_snapshot(file_engine) == before
+    finalize_legacy_database(file_engine)
     initialize_database(file_engine)

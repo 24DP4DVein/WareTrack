@@ -1,6 +1,8 @@
 ﻿from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import (Boolean, CheckConstraint, DateTime, Float, ForeignKey,
+                        ForeignKeyConstraint, Index, Integer, String, Text,
+                        UniqueConstraint, text)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -142,14 +144,15 @@ class CompanyJoinRequest(Base):
 class Category(Base):
     __tablename__ = "categories"
     __table_args__ = (
+        UniqueConstraint("id", "company_id", name="uq_categories_id_company"),
         Index(
             "uq_categories_company_name", "company_id", "name", unique=True,
             sqlite_where=text("company_id IS NOT NULL"),
         ),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_id: Mapped[int | None] = mapped_column(
-        ForeignKey("companies.id"), nullable=True, index=True
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[str] = mapped_column(Text, default="")
@@ -157,12 +160,13 @@ class Category(Base):
     color: Mapped[str] = mapped_column(String(20), default="blue")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     company = relationship("Company", back_populates="categories")
-    items = relationship("Item", back_populates="category")
+    items = relationship("Item", back_populates="category", viewonly=True)
 
 
 class Supplier(Base):
     __tablename__ = "suppliers"
     __table_args__ = (
+        UniqueConstraint("id", "company_id", name="uq_suppliers_id_company"),
         Index(
             "uq_suppliers_company_name", "company_id", "name", unique=True,
             sqlite_where=text("company_id IS NOT NULL"),
@@ -173,8 +177,8 @@ class Supplier(Base):
         ),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_id: Mapped[int | None] = mapped_column(
-        ForeignKey("companies.id"), nullable=True, index=True
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(150))
     contact_person: Mapped[str] = mapped_column(String(100))
@@ -186,46 +190,62 @@ class Supplier(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     company = relationship("Company", back_populates="suppliers")
-    items = relationship("Item", back_populates="supplier")
+    items = relationship("Item", back_populates="supplier", viewonly=True)
 
 
 class Location(Base):
     __tablename__ = "locations"
     __table_args__ = (
+        UniqueConstraint("id", "company_id", name="uq_locations_id_company"),
         Index(
             "uq_locations_company_code", "company_id", "code", unique=True,
             sqlite_where=text("company_id IS NOT NULL"),
         ),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_id: Mapped[int | None] = mapped_column(
-        ForeignKey("companies.id"), nullable=True, index=True
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     code: Mapped[str] = mapped_column(String(30))
     name: Mapped[str] = mapped_column(String(120))
     capacity: Mapped[int] = mapped_column(Integer, default=1000)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     company = relationship("Company", back_populates="locations")
-    items = relationship("Item", back_populates="location")
+    items = relationship("Item", back_populates="location", viewonly=True)
 
 
 class Item(Base):
     __tablename__ = "items"
     __table_args__ = (
+        UniqueConstraint("id", "company_id", name="uq_items_id_company"),
+        ForeignKeyConstraint(
+            ["category_id", "company_id"], ["categories.id", "categories.company_id"],
+            name="fk_items_category_company", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["supplier_id", "company_id"], ["suppliers.id", "suppliers.company_id"],
+            name="fk_items_supplier_company", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["location_id", "company_id"], ["locations.id", "locations.company_id"],
+            name="fk_items_location_company", ondelete="RESTRICT",
+        ),
+        CheckConstraint("stock >= 0", name="ck_items_stock"),
+        CheckConstraint("min_stock >= 0", name="ck_items_min_stock"),
         Index(
             "uq_items_company_sku", "company_id", "sku", unique=True,
             sqlite_where=text("company_id IS NOT NULL"),
         ),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_id: Mapped[int | None] = mapped_column(
-        ForeignKey("companies.id"), nullable=True, index=True
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(100), index=True)
     sku: Mapped[str] = mapped_column(String(30), index=True)
-    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"))
-    supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id", ondelete="SET NULL"), nullable=True)
-    location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"))
+    category_id: Mapped[int] = mapped_column(Integer)
+    supplier_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    location_id: Mapped[int] = mapped_column(Integer)
     stock: Mapped[int] = mapped_column(Integer, default=0)
     min_stock: Mapped[int] = mapped_column(Integer, default=0)
     price: Mapped[float] = mapped_column(Float, default=0)
@@ -233,24 +253,43 @@ class Item(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     company = relationship("Company", back_populates="items")
-    category = relationship("Category", back_populates="items")
-    supplier = relationship("Supplier", back_populates="items")
-    location = relationship("Location", back_populates="items")
-    transfers = relationship("Transfer", back_populates="item")
-    inventory_balances = relationship("InventoryBalance", back_populates="item")
+    category = relationship("Category", back_populates="items", viewonly=True)
+    supplier = relationship("Supplier", back_populates="items", viewonly=True)
+    location = relationship("Location", back_populates="items", viewonly=True)
+    transfers = relationship("Transfer", back_populates="item", viewonly=True)
+    inventory_balances = relationship(
+        "InventoryBalance", back_populates="item", viewonly=True
+    )
 
 
 class Transfer(Base):
     __tablename__ = "transfers"
-    __table_args__ = (UniqueConstraint("code"),)
+    __table_args__ = (
+        UniqueConstraint("company_id", "code", name="uq_transfers_company_code"),
+        ForeignKeyConstraint(
+            ["item_id", "company_id"], ["items.id", "items.company_id"],
+            name="fk_transfers_item_company", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["source_location_id", "company_id"],
+            ["locations.id", "locations.company_id"],
+            name="fk_transfers_source_location_company", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["destination_location_id", "company_id"],
+            ["locations.id", "locations.company_id"],
+            name="fk_transfers_destination_location_company", ondelete="RESTRICT",
+        ),
+        CheckConstraint("quantity > 0", name="ck_transfers_quantity"),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_id: Mapped[int | None] = mapped_column(
-        ForeignKey("companies.id"), nullable=True, index=True
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     code: Mapped[str] = mapped_column(String(30), index=True)
-    item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="RESTRICT"))
-    source_location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"))
-    destination_location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"))
+    item_id: Mapped[int] = mapped_column(Integer)
+    source_location_id: Mapped[int] = mapped_column(Integer)
+    destination_location_id: Mapped[int] = mapped_column(Integer)
     quantity: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(20), default="pending")
     priority: Mapped[str] = mapped_column(String(20), default="normal")
@@ -259,17 +298,21 @@ class Transfer(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     company = relationship("Company", back_populates="transfers")
-    item = relationship("Item", back_populates="transfers")
-    source_location = relationship("Location", foreign_keys=[source_location_id])
-    destination_location = relationship("Location", foreign_keys=[destination_location_id])
+    item = relationship("Item", back_populates="transfers", viewonly=True)
+    source_location = relationship(
+        "Location", foreign_keys=[source_location_id, company_id], viewonly=True
+    )
+    destination_location = relationship(
+        "Location", foreign_keys=[destination_location_id, company_id], viewonly=True
+    )
     creator = relationship("User", back_populates="transfers")
 
 
 class ActivityLog(Base):
     __tablename__ = "activity_logs"
     id: Mapped[int] = mapped_column(primary_key=True)
-    company_id: Mapped[int | None] = mapped_column(
-        ForeignKey("companies.id"), nullable=True, index=True
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     action: Mapped[str] = mapped_column(String(60))
@@ -288,6 +331,14 @@ class InventoryBalance(Base):
             "company_id", "item_id", "location_id",
             name="uq_inventory_balances_company_item_location",
         ),
+        ForeignKeyConstraint(
+            ["item_id", "company_id"], ["items.id", "items.company_id"],
+            name="fk_inventory_balances_item_company", ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["location_id", "company_id"], ["locations.id", "locations.company_id"],
+            name="fk_inventory_balances_location_company", ondelete="RESTRICT",
+        ),
         CheckConstraint("quantity >= 0", name="ck_inventory_balances_quantity"),
         CheckConstraint("reserved >= 0", name="ck_inventory_balances_reserved"),
         CheckConstraint(
@@ -299,8 +350,8 @@ class InventoryBalance(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="RESTRICT"))
-    item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="RESTRICT"))
-    location_id: Mapped[int] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"))
+    item_id: Mapped[int] = mapped_column(Integer)
+    location_id: Mapped[int] = mapped_column(Integer)
     quantity: Mapped[int] = mapped_column(Integer, default=0)
     reserved: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -309,6 +360,6 @@ class InventoryBalance(Base):
     )
 
     company = relationship("Company", back_populates="inventory_balances")
-    item = relationship("Item", back_populates="inventory_balances")
-    location = relationship("Location")
+    item = relationship("Item", back_populates="inventory_balances", viewonly=True)
+    location = relationship("Location", viewonly=True)
 

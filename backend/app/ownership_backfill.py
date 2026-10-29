@@ -10,7 +10,7 @@ from pathlib import Path
 
 from sqlalchemy.engine import Engine
 
-from app.migration_support import require_migrated_database
+from app.migration_support import INVENTORY_BALANCES, current_revision, validate_revision
 
 OWNED_TABLES = (
     "categories",
@@ -43,6 +43,7 @@ class BackfillResult:
     rows_checked: int
     assignments_checked: int
     rows_updated: int
+    balances_created: int
 
 
 def _positive_integer(value, label):
@@ -192,6 +193,35 @@ def _validate_relationship_graph(connection, effective):
         raise ValueError("Cross-company ownership relationships: " + ", ".join(conflicts))
 
 
+def _balance_plan(connection, effective):
+    """Validate existing ledger rows and plan deterministic item-location balances."""
+    balances = connection.exec_driver_sql(
+        "SELECT id, company_id, item_id, location_id, quantity, reserved "
+        "FROM inventory_balances ORDER BY id"
+    ).all()
+    by_item = {}
+    for balance in balances:
+        item_owner = effective.get(("items", balance.item_id))
+        location_owner = effective.get(("locations", balance.location_id))
+        if item_owner != balance.company_id or location_owner != balance.company_id:
+            raise ValueError(f"Cross-company inventory balance: {balance.id}")
+        by_item.setdefault(balance.item_id, []).append(balance)
+
+    missing = []
+    for item in connection.exec_driver_sql(
+        "SELECT id, location_id, stock FROM items ORDER BY id"
+    ).all():
+        existing = by_item.get(item.id, ())
+        if existing:
+            if sum(row.quantity for row in existing) != item.stock:
+                raise ValueError(f"Inventory balance total differs from items/{item.id}.stock")
+        else:
+            missing.append((
+                effective[("items", item.id)], item.id, item.location_id, item.stock,
+            ))
+    return missing
+
+
 def run_ownership_backfill(
     engine: Engine,
     plan: OwnershipPlan,
@@ -207,10 +237,18 @@ def run_ownership_backfill(
         connection.exec_driver_sql("BEGIN IMMEDIATE")
         try:
             _validate_plan(plan)
-            require_migrated_database(connection)
+            revision = current_revision(connection)
+            if revision != INVENTORY_BALANCES:
+                raise RuntimeError(
+                    "Ownership conversion must run at 0005_inventory_balances before "
+                    "the final integrity migration"
+                )
+            validate_revision(connection, INVENTORY_BALANCES)
             assignments, effective, rows_checked = _effective_ownership(connection, plan)
             _validate_relationship_graph(connection, effective)
+            missing_balances = _balance_plan(connection, effective)
             rows_updated = 0
+            balances_created = 0
             if apply:
                 for (table, row_id), company_id in sorted(assignments.items()):
                     result = connection.exec_driver_sql(
@@ -219,6 +257,14 @@ def run_ownership_backfill(
                         (company_id, row_id),
                     )
                     rows_updated += result.rowcount
+                for company_id, item_id, location_id, quantity in missing_balances:
+                    connection.exec_driver_sql(
+                        "INSERT INTO inventory_balances "
+                        "(company_id, item_id, location_id, quantity, reserved, created_at, updated_at) "
+                        "VALUES (?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                        (company_id, item_id, location_id, quantity),
+                    )
+                    balances_created += 1
                 remaining = sum(
                     connection.exec_driver_sql(
                         f'SELECT count(*) FROM "{table}" WHERE company_id IS NULL'
@@ -237,6 +283,7 @@ def run_ownership_backfill(
                 rows_checked=rows_checked,
                 assignments_checked=len(assignments),
                 rows_updated=rows_updated,
+                balances_created=balances_created,
             )
         except BaseException:
             connection.rollback()

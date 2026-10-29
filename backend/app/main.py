@@ -7,11 +7,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.database import engine, initialize_database
+from app.auth.security import validate_auth_configuration
 from app.routers import auth, company_inventory, company_management, users
 
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
+    validate_auth_configuration()
     initialize_database(application.state.database_engine)
     yield
 

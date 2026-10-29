@@ -8,12 +8,13 @@ import sys
 from alembic import command
 import pytest
 from sqlalchemy import inspect, text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.database import create_database_engine
 from app.migration_support import (
     COMPANY_MODELS,
-    HEAD,
+    INVENTORY_BALANCES,
     current_revision,
     migration_config,
     upgrade_database,
@@ -29,6 +30,46 @@ from app.ownership_backfill import (
 )
 
 BACKEND = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture
+def ownership_engine():
+    engine = create_database_engine("sqlite://", poolclass=StaticPool)
+    upgrade_database(engine, revision=INVENTORY_BALANCES)
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "INSERT INTO users VALUES "
+            "(1,'Admin','admin@legacy.test','hash','ADMIN',1,CURRENT_TIMESTAMP),"
+            "(2,'User','user@test.lv','hash','USER',1,CURRENT_TIMESTAMP)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO categories VALUES "
+            "(1,'Legacy category','','Package','blue',CURRENT_TIMESTAMP,NULL)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO suppliers VALUES "
+            "(1,'Legacy supplier','Contact','legacy@supplier.test','1234567',"
+            "'Address','Legacy','net30',1,CURRENT_TIMESTAMP,NULL)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO locations VALUES "
+            "(1,'LEG-A','Legacy A',1000,CURRENT_TIMESTAMP,NULL),"
+            "(2,'LEG-B','Legacy B',1000,CURRENT_TIMESTAMP,NULL)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO items VALUES "
+            "(1,'Legacy item','LEG-001',1,1,1,20,5,10.0,'',"
+            "CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL)"
+        )
+    try:
+        yield engine
+    finally:
+        engine.dispose()
+
+
+@pytest.fixture
+def ownership_database(ownership_engine):
+    return sessionmaker(bind=ownership_engine, autoflush=False, autocommit=False)
 
 
 def approved_plan(assignments):
@@ -93,12 +134,12 @@ def test_upgrade_from_company_models_adds_only_nullable_ownership(tmp_path):
                 for table in OWNED_TABLES
             }
 
-        upgrade_database(engine)
+        upgrade_database(engine, revision=INVENTORY_BALANCES)
 
         inspector = inspect(engine)
         with engine.connect() as connection:
-            assert current_revision(connection) == HEAD
-            validate_revision(connection, HEAD)
+            assert current_revision(connection) == INVENTORY_BALANCES
+            validate_revision(connection, INVENTORY_BALANCES)
             for table in OWNED_TABLES:
                 after = connection.exec_driver_sql(
                     f'SELECT * FROM "{table}" ORDER BY id'
@@ -122,8 +163,8 @@ def test_upgrade_from_company_models_adds_only_nullable_ownership(tmp_path):
         engine.dispose()
 
 
-def test_backfill_dry_run_apply_and_idempotency_preserve_data(fresh_database, test_engine):
-    with fresh_database() as session:
+def test_backfill_dry_run_apply_and_idempotency_preserve_data(ownership_database, ownership_engine):
+    with ownership_database() as session:
         company = Company(name="Legacy owner", slug="legacy-owner")
         session.add(company)
         session.flush()
@@ -150,15 +191,15 @@ def test_backfill_dry_run_apply_and_idempotency_preserve_data(fresh_database, te
         session.commit()
         company_id = company.id
 
-    with test_engine.connect() as connection:
+    with ownership_engine.connect() as connection:
         before = connection.execute(
             text("SELECT id, name, sku, stock, price FROM items ORDER BY id")
         ).all()
-    plan = approved_plan(assignments_for_all_rows(test_engine, company_id))
+    plan = approved_plan(assignments_for_all_rows(ownership_engine, company_id))
 
-    dry_run = run_ownership_backfill(test_engine, plan)
+    dry_run = run_ownership_backfill(ownership_engine, plan)
     assert dry_run.dry_run is True and dry_run.rows_updated == 0
-    with test_engine.connect() as connection:
+    with ownership_engine.connect() as connection:
         assert sum(
             connection.execute(
                 text(f'SELECT count(*) FROM "{table}" WHERE company_id IS NOT NULL')
@@ -166,10 +207,10 @@ def test_backfill_dry_run_apply_and_idempotency_preserve_data(fresh_database, te
             for table in OWNED_TABLES
         ) == 0
 
-    applied = run_ownership_backfill(test_engine, plan, apply=True)
+    applied = run_ownership_backfill(ownership_engine, plan, apply=True)
     assert applied.dry_run is False
     assert applied.rows_updated == applied.assignments_checked
-    with test_engine.connect() as connection:
+    with ownership_engine.connect() as connection:
         assert connection.execute(
             text("SELECT id, name, sku, stock, price FROM items ORDER BY id")
         ).all() == before
@@ -179,22 +220,22 @@ def test_backfill_dry_run_apply_and_idempotency_preserve_data(fresh_database, te
                 {"company_id": company_id},
             ).scalar_one() == 0
 
-    repeated = run_ownership_backfill(test_engine, plan, apply=True)
+    repeated = run_ownership_backfill(ownership_engine, plan, apply=True)
     assert repeated.rows_updated == 0
 
 
-def test_incomplete_or_cross_company_plan_writes_nothing(fresh_database, test_engine):
-    with fresh_database() as session:
+def test_incomplete_or_cross_company_plan_writes_nothing(ownership_database, ownership_engine):
+    with ownership_database() as session:
         first = Company(name="First owner", slug="first-owner")
         second = Company(name="Second owner", slug="second-owner")
         session.add_all([first, second])
         session.commit()
         first_id, second_id = first.id, second.id
 
-    complete = assignments_for_all_rows(test_engine, first_id)
+    complete = assignments_for_all_rows(ownership_engine, first_id)
     incomplete = approved_plan(complete[:-1])
     with pytest.raises(ValueError, match="Unresolved ownership"):
-        run_ownership_backfill(test_engine, incomplete, apply=True)
+        run_ownership_backfill(ownership_engine, incomplete, apply=True)
 
     conflicting = list(complete)
     item_index = next(
@@ -203,37 +244,37 @@ def test_incomplete_or_cross_company_plan_writes_nothing(fresh_database, test_en
     item = conflicting[item_index]
     conflicting[item_index] = OwnershipAssignment(item.table, item.row_id, second_id)
     with pytest.raises(ValueError, match="Cross-company"):
-        run_ownership_backfill(test_engine, approved_plan(conflicting), apply=True)
+        run_ownership_backfill(ownership_engine, approved_plan(conflicting), apply=True)
 
-    with test_engine.connect() as connection:
+    with ownership_engine.connect() as connection:
         for table in OWNED_TABLES:
             assert connection.execute(
                 text(f'SELECT count(*) FROM "{table}" WHERE company_id IS NOT NULL')
             ).scalar_one() == 0
 
 
-def test_backfill_rejects_unknown_company_row_and_duplicate(fresh_database, test_engine):
-    with fresh_database() as session:
+def test_backfill_rejects_unknown_company_row_and_duplicate(ownership_database, ownership_engine):
+    with ownership_database() as session:
         company = Company(name="Owner", slug="owner")
         session.add(company)
         session.commit()
         company_id = company.id
-    complete = assignments_for_all_rows(test_engine, company_id)
+    complete = assignments_for_all_rows(ownership_engine, company_id)
 
     unknown_company = list(complete)
     first = unknown_company[0]
     unknown_company[0] = OwnershipAssignment(first.table, first.row_id, 999999)
     with pytest.raises(ValueError, match="Unknown company"):
-        run_ownership_backfill(test_engine, approved_plan(unknown_company), apply=True)
+        run_ownership_backfill(ownership_engine, approved_plan(unknown_company), apply=True)
 
     with pytest.raises(ValueError, match="Unknown row"):
         run_ownership_backfill(
-            test_engine,
+            ownership_engine,
             approved_plan(complete + [OwnershipAssignment("items", 999999, company_id)]),
             apply=True,
         )
     with pytest.raises(ValueError, match="Duplicate ownership"):
-        run_ownership_backfill(test_engine, approved_plan(complete + [complete[0]]), apply=True)
+        run_ownership_backfill(ownership_engine, approved_plan(complete + [complete[0]]), apply=True)
 
 
 def test_plan_file_requires_approval_metadata_and_timezone(tmp_path):

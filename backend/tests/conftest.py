@@ -15,12 +15,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 if "app.database" in sys.modules or "app.main" in sys.modules:
     raise pytest.UsageError("Configure the isolated database before importing app modules")
 os.environ["DATABASE_URL"] = "sqlite://"
+os.environ["JWT_SECRET_KEY"] = "isolated-test-secret-key-with-at-least-32-characters"
 
 from app.auth.security import hash_password
 from app.database import create_database_engine, engine as application_engine, get_db, initialize_database
 from app.main import app
 from app.migration_support import upgrade_database
-from app.models import Category, Item, Location, Supplier, User
+from app.models import (
+    Category, Company, InventoryBalance, Item, Location,
+    Supplier, User,
+)
 
 
 @event.listens_for(application_engine, "do_connect")
@@ -50,14 +54,21 @@ def fresh_database(test_engine):
 def populate_database(db):
     admin = User(name="Admin", email="admin@test.lv", password_hash=hash_password("Admin123!"), role="ADMIN")
     user = User(name="User", email="user@test.lv", password_hash=hash_password("User123!"), role="USER")
-    cat = Category(name="Testa kategorija", description="Testiem", icon="Package", color="blue")
-    supplier = Supplier(name="Testa pieg─üd─üt─üjs", contact_person="Anna Liepa", email="anna@supplier.lv",
+    company = Company(name="Testa uzņēmums", slug="testa-uznemums", is_active=False)
+    db.add_all([admin, user, company]); db.flush()
+    cat = Category(company_id=company.id, name="Testa kategorija", description="Testiem", icon="Package", color="blue")
+    supplier = Supplier(company_id=company.id, name="Testa pieg─üd─üt─üjs", contact_person="Anna Liepa", email="anna@supplier.lv",
                         phone="+371 20000000", address="R─½ga, Latvija", category="Testi", payment_terms="net30")
-    loc1 = Location(code="RIG-A01", name="R─½ga A1", capacity=1000)
-    loc2 = Location(code="RIG-B01", name="R─½ga B1", capacity=1000)
-    db.add_all([admin, user, cat, supplier, loc1, loc2]); db.flush()
-    db.add(Item(name="Testa prece", sku="TEST-001", category_id=cat.id, supplier_id=supplier.id,
-                location_id=loc1.id, stock=20, min_stock=5, price=10))
+    loc1 = Location(company_id=company.id, code="RIG-A01", name="R─½ga A1", capacity=1000)
+    loc2 = Location(company_id=company.id, code="RIG-B01", name="R─½ga B1", capacity=1000)
+    db.add_all([cat, supplier, loc1, loc2]); db.flush()
+    item = Item(company_id=company.id, name="Testa prece", sku="TEST-001", category_id=cat.id,
+                supplier_id=supplier.id, location_id=loc1.id, stock=20, min_stock=5, price=10)
+    db.add(item); db.flush()
+    db.add(InventoryBalance(
+        company_id=company.id, item_id=item.id, location_id=loc1.id,
+        quantity=20, reserved=0,
+    ))
     db.commit()
 
 

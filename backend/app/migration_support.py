@@ -13,10 +13,11 @@ BASELINE = "0001_baseline"
 COMPANY_MODELS = "0002_company_models"
 COMPANY_OWNERSHIP = "0003_company_ownership"
 COMPANY_SCOPED_UNIQUENESS = "0004_company_scoped_uniqueness"
-HEAD = "0005_inventory_balances"
+INVENTORY_BALANCES = "0005_inventory_balances"
+HEAD = "0006_company_integrity"
 REVISION_ORDER = (
     BASELINE, COMPANY_MODELS, COMPANY_OWNERSHIP,
-    COMPANY_SCOPED_UNIQUENESS, HEAD,
+    COMPANY_SCOPED_UNIQUENESS, INVENTORY_BALANCES, HEAD,
 )
 KNOWN_REVISIONS = set(REVISION_ORDER)
 
@@ -29,10 +30,12 @@ def migration_config(connection=None, *, adopt_existing=False):
     return config
 
 
-def upgrade_database(db_engine, *, adopt_existing=False):
+def upgrade_database(db_engine, *, adopt_existing=False, revision="head"):
     """Explicit operation. Startup must never call this function."""
     with db_engine.connect() as connection:
-        command.upgrade(migration_config(connection, adopt_existing=adopt_existing), "head")
+        command.upgrade(
+            migration_config(connection, adopt_existing=adopt_existing), revision
+        )
 
 
 def sql_tokens(sql):

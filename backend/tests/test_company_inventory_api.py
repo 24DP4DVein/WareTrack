@@ -4,7 +4,10 @@ from alembic import command
 from sqlalchemy import select
 
 from app.database import create_database_engine
-from app.migration_support import COMPANY_OWNERSHIP, HEAD, current_revision, migration_config, upgrade_database
+from app.migration_support import (
+    COMPANY_OWNERSHIP, INVENTORY_BALANCES, current_revision, migration_config,
+    upgrade_database,
+)
 from app.models import ActivityLog, Category, Company, CompanyJoinRequest, CompanyMembership, Item, Location, Supplier, User
 
 
@@ -160,9 +163,9 @@ def test_uniqueness_migration_preserves_legacy_null_owned_rows(tmp_path):
                 "VALUES (501,'Legacy','','Package','blue',CURRENT_TIMESTAMP,NULL)"
             )
             before = connection.exec_driver_sql("SELECT * FROM categories WHERE id=501").one()
-        upgrade_database(engine)
+        upgrade_database(engine, revision=INVENTORY_BALANCES)
         with engine.connect() as connection:
-            assert current_revision(connection) == HEAD
+            assert current_revision(connection) == INVENTORY_BALANCES
             assert connection.exec_driver_sql("SELECT * FROM categories WHERE id=501").one() == before
     finally:
         engine.dispose()
