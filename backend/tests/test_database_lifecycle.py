@@ -54,14 +54,20 @@ from sqlalchemy import inspect
 from app.database import Base, engine
 from app.main import app
 from app.migration_support import upgrade_database
+from app.models import Company
+from sqlalchemy.orm import Session
 assert not Path(sys.argv[1]).exists()
 upgrade_database(engine)
+with Session(engine) as db:
+    db.add(Company(name='Startup company', slug='startup-company'))
+    db.commit()
 with TestClient(app) as client:
     assert client.get('/api/health').status_code == 200
     assert client.get('/api/items').status_code == 410
     assert set(inspect(engine).get_table_names()) == set(Base.metadata.tables) | {'alembic_version'}
     response = client.post('/api/auth/register', json={
         'name': 'Startup test', 'email': 'startup@test.lv',
+        'companyId': 1,
         'password': 'Password123!', 'passwordConfirmation': 'Password123!',
     })
     assert response.status_code == 201

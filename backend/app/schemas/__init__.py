@@ -15,8 +15,11 @@ class APIModel(BaseModel):
 
 
 class RegisterIn(APIModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=2, max_length=100)
     email: EmailStr
+    company_id: int = Field(gt=0)
     password: str = Field(min_length=8, max_length=128)
     password_confirmation: str
 
@@ -85,6 +88,77 @@ class CompanyJoinRequestOut(APIModel):
     reviewed_at: datetime | None
     reviewed_by_id: int | None
     rejection_reason: str | None
+
+
+class PublicCompanyOut(APIModel):
+    id: int
+    name: str
+    slug: str
+
+
+class MyCompanyOut(PublicCompanyOut):
+    role: Literal["LIETOTAJS", "VADITAJS", "ADMIN"]
+
+
+class MyJoinRequestOut(APIModel):
+    id: int
+    company_id: int
+    company_name: str
+    status: Literal["PENDING", "APPROVED", "REJECTED"]
+    requested_at: datetime
+    reviewed_at: datetime | None
+    rejection_reason: str | None
+
+
+class ManagedJoinRequestOut(MyJoinRequestOut):
+    user_id: int
+    user_name: str
+    user_email: EmailStr
+
+
+class JoinRequestRejectIn(APIModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ManagedMembershipOut(APIModel):
+    id: int
+    company_id: int
+    user_id: int
+    user_name: str
+    user_email: EmailStr
+    role: Literal["LIETOTAJS", "VADITAJS"]
+    is_active: bool
+    approved_at: datetime | None
+    revoked_at: datetime | None
+
+
+class MembershipRoleUpdate(APIModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["LIETOTAJS", "VADITAJS"]
+
+
+class AdminCompanyCreate(APIModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=2, max_length=150)
+    slug: str = Field(min_length=2, max_length=100, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+    initial_manager_user_id: int = Field(gt=0)
+
+
+class AdminCompanyUpdate(APIModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=2, max_length=150)
+    is_active: bool | None = None
+
+
+class InitialManagerIn(APIModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: int = Field(gt=0)
 
 
 class CategoryIn(APIModel):

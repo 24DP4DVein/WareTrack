@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.database import engine, initialize_database
-from app.routers import auth, company_inventory, users
+from app.routers import auth, company_inventory, company_management, users
 
 
 @asynccontextmanager
@@ -23,6 +23,8 @@ app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True
                    allow_methods=["*"], allow_headers=["*"])
 
 app.include_router(auth.router, prefix="/api")
+app.include_router(company_management.router, prefix="/api")
+app.include_router(company_management.admin_router, prefix="/api")
 app.include_router(company_inventory.router, prefix="/api")
 app.include_router(company_inventory.legacy, prefix="/api")
 app.include_router(users.router, prefix="/api")
