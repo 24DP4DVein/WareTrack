@@ -68,7 +68,7 @@ FastAPI, SQLAlchemy un SQLite. Datu apmaiņa notiek caur autentificētu REST API
 
 Seed izveido tikai izstrādes demonstrācijas kontus:
 
-- `ADMIN`: `admin@waretrack.lv` / `Admin123!`
+- `ADMIN`: `admin@waretrack.lv` / `WareTrackDemo2026XV2`
 - `VADITAJS`: `manager@waretrack.lv` / `Manager123!`
 - `LIETOTAJS`: `viewer@waretrack.lv` / `Viewer123!`
 
